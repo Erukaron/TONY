@@ -1,0 +1,22 @@
+-------------------------------------------------
+# TONY ToDo List
+-------------------------------------------------
+
+[x] Keyboard - Map Dateien erstellen -> Sind Größenbegrenzt (z.B. 2kb) und enhalten Informationen und Tabellen zur Verarbeitung von Scan Codes -> Struktur überlegen (default DE)
+[x] Keyboard getch 
+[x] und readln
+[x] Keyboard auf extended scan codes reagieren -> Tabelle erweitern
+[x] Keyboard .check_key_modifier auf interrupt umstellen -> Suche in Keymap nach Funktionstasten -> Nach Funktionstastencode -> nach Scancode (erweitert? => OFFSET!) in Keystate table und erstelle interrupt zur Abfrage von Sondertasten (mit Funktionen ah=0 al = ESC - DRUCK, ah=1 al = EINFG - BILD Runter) -> setze oder lösche carry und ersetzte .check_special_keys aktuell mit  Aufruf und carry Prüfung 
+[x] Keyboard vor .check_key_modifier prüfen, ob Funktionstaste, falls ja verlassen, da im folgenden nur noch ASCII Umwandlung stattfindet
+[ ] Keyboard Capslock und numlock (inkl. leds)
+[ ] Kernel Config Reader
+    [ ] Lesen von Keyboard Map und entsprechend laden (an bestimmte Stelle in Keyboard Driver laden)
+[ ] Memory Map anlegen -> 0x000000 - 0x07ffff (8 Segmente) programmierbar (524288B = 512kB) -> Map in Kernel mit 4kB, jedes Bit gibt an, ob 16 Byte im Bereich 0x00000-0x07ffff frei sind -> Speicher in 16 Byte große Einheiten zerlegt (kleinst möglich)
+    [ ] Interrupt nimmt Anzahl benötigter Bytes entgegen, und gibt Pointer zurück
+    [ ] Delete Interrupt nimmt Anzahl benötigter Bytes und Pointer entgegen 
+[] Machine Monitor vgl. Apple 2 -> lesen (Zahl eingeben) von N Byte (zahl1-zahl2), schreiben von N Byte (addr: zahl1 zahl2...), ausführen an bestimmter Stelle (zahlR/zahlG)
+[] Mini disassembler -> zahlL bzw. zahl1-zahl2L 
+[] Mini Assembler ! Startet Assembler (! Ist prompt) ->!addr Befehl, folgebefehle mit ! Befehl -> Leerzeichen gibt folgebefehl an -> Assembler gibt opcode aus -> Tabelle 
+[ ] Kernel Config Reader
+    [ ] Lesen von Shell Datei und entsprechend in freien Speicher laden und ausführen 
+[ ] File open interrupt gibt file zurück mit Adresse, Anfangsposition fat, aktuelles Cluster der Datei im Speicher ; mit file read line interrupt bis eof durch Datei lesen ; mit write Schreiben und mit close Speicher freigeben 

@@ -1,0 +1,211 @@
+-------------------------------------------------
+0x80 - 0x87: timer
+0x88 - 0x8f: sound
+0x90 - 0xaf: display
+0xb0 - 0xb7: keyboard
+0xb8 - 0xbf: memory
+0xc0 - 0xcf: file
+0xd0 - 0xdf: string
+0xe0 - 0xef: convert
+0xf0 - 0xff: misc
+-------------------------------------------------
+
+
+
+
+
+-------------------------------------------------
+0x80
+	Get timer ticks (1000Hz)
+	input: 
+		none
+	output: 
+		AX -> timer ticks
+-------------------------------------------------
+
+
+
+
+
+-------------------------------------------------
+0x90
+    Put character to screen and advance cursor position
+    input:
+        AL -> character
+    output:
+        none
+-------------------------------------------------
+0x91
+    Print string
+    input:
+        DS:SI -> 0 terminated string
+    output:
+        none
+-------------------------------------------------
+0x92
+    Prints a null terminated string to a specific location
+    input: 
+        DS:SI -> 0 terminated string
+        AH -> Y Coord
+        AL -> X Coord
+    output:
+        none
+-------------------------------------------------
+0x93
+    Switch the video mode
+    input: 
+        AL -> Video mode (0 : Textmode 80x25, 1 : Videomode 320x200)
+    output:
+        none
+-------------------------------------------------
+0x94
+    Put pixel
+    input: 
+        AL -> height
+        BX -> width
+        DL -> color
+    output:
+        none
+--------------------------------------------------
+
+
+
+
+-------------------------------------------------
+0xb0
+    Get character from keyboard and put it to the screen
+    input:
+        AH -> 0xff for not putting the char to screen
+    output:
+        AL -> character
+-------------------------------------------------
+0xb1
+    Read line from keyboard and write it to the screen
+    Saves into es:di and adds 0 terminator at the end
+    input:
+        cx -> buffer length (including 1 terminator byte)
+        es:di -> write buffer
+    output:
+        none:
+-------------------------------------------------
+0xb2
+    Is function key pressed
+    input:
+        ah -> See FUNCCODE.INC constants
+    output:
+        al = 0x00: key not pressed
+        al = 0x01: key pressed
+        al = 0xff: key not in current keymap
+-------------------------------------------------
+
+-------------------------------------------------
+0xc0
+    Load file from current drive
+    input:
+        ds:si -> filename in 8.3 format
+        es:di -> read buffer
+    output:
+        carry flag set on error
+-------------------------------------------------
+0xcf
+    Feedback: disk operation
+    input:
+        none
+    output:
+        none
+-------------------------------------------------
+
+-------------------------------------------------
+0xd0
+    Get string length -> Number of chars to next terminator (terminator is not included in length)
+    input:
+        ds:si -> String for length detection
+    output:
+        ax -> Length of string
+-------------------------------------------------
+0xd1
+    Initialize a string for a specified length and sets a terminator byte at the end
+    input:
+        es:di -> String to initialize
+        al -> initialization byte
+        cx -> length of string (one byte of this size is reserved for the terminator)
+    output:
+        es:di -> Initialized string
+-------------------------------------------------
+0xd2
+    Checks if a string contains another string
+    input:
+        ah -> 0 contains substring, not 0 are strings equal
+        ds:si -> String to be checked
+        es:di -> Check string
+    output:
+        carry flag -> Set if ds:si string does not contain es:di string, otherwise clear
+        ax -> start of es:di string inside ds:si string (0 if not inside)
+-------------------------------------------------
+0xd3
+    Copies a substring into another string
+    input:
+        ds:si -> source string to create a copy from
+        bx -> relative start address
+        dx -> relative end address 
+    output:
+        es:di -> target string buffer (will be 0 terminated, needs dx-bx + 1 bytes)
+-------------------------------------------------
+0xd4
+    Splits a string on the occurence of a specific character
+    First part of the string remains in ds:si (will be terminated), second part is split into es:di
+    input: 
+        ds:si -> String to split
+        ah -> 0 Split with termination of first string, 1 Split without termination of first string
+        al -> split character
+        cx -> max split length
+    output:
+        es:di -> Buffer to second part
+-------------------------------------------------
+
+-------------------------------------------------
+0xe0
+    Converts a string to upper/lower case
+    input:
+        ah -> 0 convert to upper, not 0 convert to lower
+        ds:si -> string to convert
+    output:
+        ds:si -> Converted string
+-------------------------------------------------
+0xe1
+    Convert Cluster to LBA (Logical Block Address)
+    input: 
+        dx -> Cluster to convert
+    output:
+        dx -> LBA: (cluster - 2) * sectors per cluster (LBA)
+-------------------------------------------------
+0xe2
+    Convert LBA to CHS (Cylinder Head Sector)
+    input: 
+        dx -> LBA Address to convert
+    output:
+        cl -> Sector: (logical sector / sectors per track) + 1
+        dh -> Head: (logical sector / sectors per track) MOD number of heads
+        ch -> Track: logical sector / (sectors per track * number of heads)
+-------------------------------------------------
+
+-------------------------------------------------
+0xf0
+    Starts the machine language terminal
+    Address returns the containing value
+    Address-Address returns the containing values
+    Address: value sets the value of address to value
+    Address: value value value ... sets the values of addresses to values
+    AddressR Sets execution to specified address
+    input: 
+        none
+    output:
+        none
+-------------------------------------------------
+0xff
+    Software
+    input: 
+        ?
+    output:
+        ?
+-------------------------------------------------
