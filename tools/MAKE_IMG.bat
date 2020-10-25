@@ -57,6 +57,13 @@ for %%f in (*.ASM) do (
 )
 echo.
 
+:: Adjust filesize for binary files
+for %%f in (..\bin\*.*) do (
+	echo Adjusting file size for binary: %%f
+	..\tools\FAT_RootDir_Creator.exe -fill next -fill-byte 0 -i "%%f"
+)
+echo.
+
 :: Go back to home dir
 cd ..
 

@@ -75,42 +75,22 @@ kernel_setup:
     call install_mlt
 
     ; read kernel config file
-    ; Todo Adjust keymap file
-    ; Todo Adjust font
+    ; Todo Adjust keymap file to file from kernel config
+    ; Todo Adjust font ; to file from kernel config
 
     ; read font
     mov si, font_file
     call display_update_font
-    mov al, 1
-    int 0x93
+
+    ; Now that we have a font file, switch to gfx mode
+    mov al, 1 ; gfx mode
+    int 0x93 ; Switch video mode
 
     ; read keyboard file
     mov si, keymap_file
     call keyboard_update_keymap
 
-    ; GFX Test
-    mov ah, 0
-    mov al, 0x13
-    int 0x10
-
-    mov ax, 0xa000
-    mov es, ax
-    xor di, di
-
-    .draw:
-        mov dx, di
-        mov [es:di], dl
-        inc di
-        cmp di, 0
-        je .done_draw
-    jmp .draw
-
-    .done_draw:
-        int 0xb0
-
-    ; start machine language terminal
-    ;int 0xf0
-
+    ; -------------------Testcode
     .loop1:
     mov cx, 256
     mov ax, cs
@@ -124,9 +104,11 @@ kernel_setup:
     jmp .loop1
 
     stringdata times 256 db 0
+    ; -------------------Testcode
 
     ; set default video mode and start mlt
     call display_restore_default_kernel_video_mode
+    ; Start mlt
     int 0xf0
 
     cli
@@ -137,32 +119,17 @@ kernel_setup:
 ; Interrupt installing routines
 ;-------------------------------------------------------------------------------
 install_timer:
-    ;push ds
-    ;mov ax, 0
-    ;mov ds, ax
-    ;mov dx, [ds:0x20] ; Old timer interrupt
-    ;mov bp, [ds:0x22]
-    ;call timer_init
-    ;pop ds
-
-    ;mov al, 0x08 ; Hardware timer
-    ;mov bx, timer_callback
-    ;call kernel_install_interrupt
-
-    cli
-    mov al, 0x70 ; RTC timer
-    mov bx, timer_callback
-    call kernel_install_interrupt
-
-    xchg bx, bx
     push ds
     mov ax, 0
     mov ds, ax
-    mov dx, [ds:0x1c0] ; Old timer interrupt
-    mov bp, [ds:0x1c2]
-    call timer_init
+    mov dx, [ds:0x20] ; Old timer interrupt
+    mov bp, [ds:0x22]
+    ;call timer_init
     pop ds
-    sti
+
+    mov al, 0x08 ; Hardware timer
+    mov bx, timer_callback
+    ;call kernel_install_interrupt
 
     mov al, 0x80
     mov bx, timer_get_ticks
@@ -192,6 +159,10 @@ install_display:
 
     mov al, 0x94
     mov bx, display_put_pixel
+    call kernel_install_interrupt
+
+    mov al, 0x95
+    mov bx, display_clear_screen
     call kernel_install_interrupt
 
     mov si, timer_installed_msg

@@ -30,8 +30,8 @@
 ; Constants
 ;-------------------------------------------------------------------------------
 PIT_FREQUENCY           equ 1193182     ; oscillation frequency (Hz) of the 8253 PIT
-TIMER_FREQUENCY         equ 1000        ; system timer frequency (Hz)
-TIMER_DEFAULT_FREQUENCY equ 18
+TIMER_FREQUENCY         equ 1820        ; system timer frequency (Hz)
+TIMER_DEFAULT_FREQUENCY equ 18          ; 18, 2 Hz
 TIMER_TICKS_DEFAULT_FRQ equ TIMER_FREQUENCY / TIMER_DEFAULT_FREQUENCY ; Number of ticks for one tick in default frequency
 TIMER_DIVISOR           equ PIT_FREQUENCY / TIMER_FREQUENCY ; used to configure the PIT
 ;-------------------------------------------------------------------------------
@@ -40,6 +40,7 @@ TIMER_DIVISOR           equ PIT_FREQUENCY / TIMER_FREQUENCY ; used to configure 
 ; Variables
 ;-------------------------------------------------------------------------------
 timer_tick_count dw 0
+timer_bios_tick_count db 0
 timer_rtc_bios_int_offset dw 0
 timer_rtc_bios_int_segment dw 0
 ;-------------------------------------------------------------------------------
@@ -54,77 +55,22 @@ timer_rtc_bios_int_segment dw 0
 ;   none
 ;-------------------------------------------------------------------------------
 timer_init:
-    ; Test multiple of 18,2Hz with PIT
-
     mov [cs:timer_rtc_bios_int_offset], dx
     mov [cs:timer_rtc_bios_int_segment], bp
 
     cli 
 
-    ; disable NMI
-    xchg bx, bx
-    in al, 0x70
-    and al, 0x7f
-    out 0x70, al
-    in al, 0x70
-
-    ; Chip scheint nicht vorhanden zu sein... Wert lesen, verändern, schreiben und lesen
-    ; bringt bei beiden Lesevorgängen den selben Wert, dieser sollte aber unterschiedlich sein
-    ; Checken ob man Bochs dazu bringen muss RTC/NMI zur Verfügung zu stellen / Was mich daran hindert das zu verwenden
-
-    ; Set freq
-    mov al, 0x0a
-    out 0x70, al
-
-    in al, 0x71
-    or al, 110b
-    mov ah, al
-
-    mov al, 0x0a
-    out 0x70, al
-
-    mov al, ah
-    out 0x71, al
-
-    ; Enable int
-    mov al, 0x0b
-    out 0x70, al
-
-    in  al, 0x71
-    or  al, 01010000b
-    ;and al, 11001111b
-    mov ah, al
-
-    mov al, 0x0b
-    out 0x70, al
-
-    mov al, ah
-    out 0x71, al
-
     mov word [cs:timer_tick_count], 0
 
-    mov al, 0x0c
-    out 0x70, al
-    in al, 0x71
+    mov al, 36h                 ; PIT channel 0
+    out 43h, al                 ; select channel
 
-    mov al, 0x0d
-    out 0x70, al
-    in al, 0x71
-
-    ; enable NMI
-    in al, 0x70
-    or al, 0x80
-    out 0x70, al
+    mov ax, TIMER_DIVISOR
+    out 40h, al    ;send low byte
+    mov al, ah
+    out 40h, al    ;send high byte
 
     sti
-
-    inc al
-    out 0x70, al
-    in al, 0x70
-
-    int 0x70
-
-    ;call kernel_acknowledge_hardware_interrupt_slave
 
     ret
 ;-------------------------------------------------------------------------------
@@ -141,31 +87,30 @@ timer_init:
 timer_callback:
     push ax
 
-    xchg bx, bx
     inc word [cs:timer_tick_count]
+    inc byte [cs:timer_bios_tick_count]
     
-    ; Bios interrupt
-    ;sti
+    xchg bx, bx
+    cmp byte [cs:timer_bios_tick_count], TIMER_FREQUENCY / TIMER_DEFAULT_FREQUENCY
+    jne .next_inst_after_int
 
-    ;pushf
-    ;push cs
-    ;push .next_inst_after_int
+    mov byte [cs:timer_bios_tick_count], 0
+
+    ; Bios interrupt
+    pushf
+    push cs
+    push .next_inst_after_int
     ; Load interrupt location into the stack
-    ;push word [cs:timer_rtc_bios_int_segment]
-    ;push word [cs:timer_rtc_bios_int_offset]
+    push word [cs:timer_rtc_bios_int_segment]
+    push word [cs:timer_rtc_bios_int_offset]
     ; Jump to stack
-    ;retf
+    retf
 
     .next_inst_after_int:
-    ; read c register 
-    cli
-    ;mov al, 0x0c
-    ;out 0x70, al
-    ;in al, 0x71
-    sti
+    ;sti
 
     pop ax
-    call kernel_acknowledge_hardware_interrupt_slave
+    call kernel_acknowledge_hardware_interrupt
     iret
 ;-------------------------------------------------------------------------------
 
