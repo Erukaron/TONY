@@ -90,6 +90,12 @@ kernel_setup:
     mov si, keymap_file
     call keyboard_update_keymap
 
+    mov ax, 18
+    int 0xb8
+
+    mov ax, 111
+    int 0xb8
+
     ; -------------------Testcode
     .loop1:
     mov cx, 256
@@ -207,6 +213,10 @@ install_keyboard:
     keyboard_installed_msg db "Keyboard interrupts installed.", LINEFEED, RETURN, 0
 
 install_memory:
+    mov al, 0xb8
+    mov bx, memory_reserve_bytes
+    call kernel_install_interrupt
+
     mov si, memory_installed_msg
     int 0x91
 

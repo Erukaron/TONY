@@ -104,6 +104,15 @@
         al = 0x01: key pressed
         al = 0xff: key not in current keymap
 -------------------------------------------------
+0xb8
+    Reserves memory (in 16-byte units)
+    input: 
+        AX -> Number of bytes to reserve
+    output:
+        BX -> Segment
+        DX -> Offset
+        BX = DX = 0xffff -> not enough memory
+-------------------------------------------------
 
 -------------------------------------------------
 0xc0
