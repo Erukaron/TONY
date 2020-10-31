@@ -66,7 +66,7 @@ memory_master_map_end:
 ;   DX -> Offset
 ;   BX = DX = 0xffff -> not enough memory
 ;-------------------------------------------------------------------------------
-memory_reserve_bytes:
+memory_allocate:
     push ax
     push cx
     push si
@@ -131,7 +131,6 @@ memory_reserve_bytes:
     ; di -> offset in memory_master_map
     ; ch -> first free bit in ds:di
     .found:
-        xchg bx, bx
         push di
         push cx
             ; Write 1 to memory map for reserved bytes
@@ -147,7 +146,7 @@ memory_reserve_bytes:
             ; ax contains the number of 1 to write
             .found_write_no_remainder:
             mov cx, ax
-            .found_write_loop
+            .found_write_loop:
                 mov bh, [ds:di]
                 or bh, bl ; set 1 at bit active in bl
                 mov [es:di], bh ; write 1 to memory map
@@ -169,7 +168,6 @@ memory_reserve_bytes:
 
             ; Calculate segment numer into ax
             xor dx, dx
-            xchg bx, bx
             mov ax, di
             div cx
             mov bx, ax
@@ -189,7 +187,6 @@ memory_reserve_bytes:
             pop dx
 
             ; Calculate offset (part 1)
-            xchg bx, bx
             mov cx, MEMORY_SMALLEST_UNIT * 8
             mov ax, dx
             mul cx
@@ -219,4 +216,111 @@ memory_reserve_bytes:
         jmp .done
 
     .requested_bytes dw 0
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Free memory
+;
+; input: 
+;   AX -> Number of bytes to free
+;   BX -> Segment to free
+;   DX -> Offset to free
+;
+; output:
+;   none
+;-------------------------------------------------------------------------------
+memory_free:
+    pusha
+    pushf
+    push ds
+    push es
+
+    push cs
+    pop es
+
+    test dx, 0b1111 ; If one of these bytes is set (lsb of offset is 1 - 15), the memory was not allocated by the memory manager and can thus not be freed
+    jnz .done ; Do not free anything
+
+    mov di, memory_master_map
+
+    push ax
+        ; Calculate segment number
+        push dx
+            mov cx, 0x1000
+            mov ax, bx
+            xor dx, dx
+            div cx
+            mov bx, ax ; Number of segment
+            mov cx, dx ; Save remainder from segment 
+        pop dx
+
+        shl cx, 4 ; segment remainder needs to be multiplied with 16 because of the division above
+        add dx, cx ; add segment remainder to offset 
+        jnc .no_increase_segment
+        ; On carry increase segment count -> offset wrapped around
+        inc bx
+        .no_increase_segment:
+
+        push dx
+            mov ax, bx
+            mov cx, 65536 / MEMORY_SMALLEST_UNIT / 8 ; size for one segment in memory map
+            mul cx ; Calculate segmet size in memory map
+            add di, ax ; Select segment in memory map
+        pop dx
+
+        ; Calculate offset (part 1)
+        mov cx, MEMORY_SMALLEST_UNIT * 8
+        mov ax, dx
+        xor dx, dx
+        div cx
+        add di, ax
+
+        ; Calculate offset (part 2 -> dx contains remainder -> identifies the start bit)
+        mov ax, dx
+        mov cx, MEMORY_SMALLEST_UNIT
+        xor dx, dx
+        div cx
+        cmp dx, 0
+        je .no_increase_offset_2
+        xchg bx, bx ; Should not occur!
+        int 0x00
+        inc ax ; If there is a remainder, the full 16 byte unit was allocated -> needs to be freed
+        .no_increase_offset_2:
+
+        ; Set start bit
+        mov bl, 0b10000000
+        mov cl, al
+        shr bl, cl
+    pop ax
+
+    mov cx, MEMORY_SMALLEST_UNIT
+    xor dx, dx
+    div cx
+    cmp dx, 0
+    je .no_increase_no_of_zero
+    inc ax ; If there is a remainder, the full 16 byte unit was allocated -> needs to be freed 
+    .no_increase_no_of_zero:
+
+    mov cx, ax
+    .write_loop:
+        mov bh, [es:di]
+        not bl ; negate bl -> we want to set a zero, not a 1
+        and bh, bl ; set 0 at bit active in bl
+        mov [es:di], bh ; write 0 to memory map
+        not bl ; reset bl so that a 1 indicates the current bit
+        shr bl, 1
+        cmp bl, 0
+        jne .write_loop_skip_inc_di
+        ; Last bit of current byte reached
+        inc di
+        mov bl, 0b10000000
+        .write_loop_skip_inc_di:
+    loop .write_loop
+
+    .done:
+        pop es
+        pop ds
+        popf
+        popa
+        iret
 ;-------------------------------------------------------------------------------

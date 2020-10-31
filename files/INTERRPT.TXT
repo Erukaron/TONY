@@ -105,13 +105,22 @@
         al = 0xff: key not in current keymap
 -------------------------------------------------
 0xb8
-    Reserves memory (in 16-byte units)
+    Allocate memory (in 16-byte units)
     input: 
         AX -> Number of bytes to reserve
     output:
         BX -> Segment
         DX -> Offset
         BX = DX = 0xffff -> not enough memory
+-------------------------------------------------
+0xb9
+    Free memory
+    input: 
+        AX -> Number of bytes to free
+        BX -> Segment to free
+        DX -> Offset to free
+    output:
+        none
 -------------------------------------------------
 
 -------------------------------------------------

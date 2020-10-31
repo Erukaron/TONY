@@ -78,23 +78,22 @@ kernel_setup:
     ; Todo Adjust keymap file to file from kernel config
     ; Todo Adjust font ; to file from kernel config
 
-    ; read font
-    mov si, font_file
-    call display_update_font
-
-    ; Now that we have a font file, switch to gfx mode
-    mov al, 1 ; gfx mode
-    int 0x93 ; Switch video mode
-
     ; read keyboard file
     mov si, keymap_file
     call keyboard_update_keymap
 
-    mov ax, 18
-    int 0xb8
+    ; read font
+    mov si, font_file
+    call display_update_font
 
-    mov ax, 111
-    int 0xb8
+    mov ah, FUNC_KEY_F8
+    int 0xb2
+    cmp al, 0x01
+    je .no_gfx_mode
+        ; Now that we have a font file, switch to gfx mode
+        mov al, 1 ; gfx mode
+        int 0x93 ; Switch video mode
+    .no_gfx_mode:
 
     ; -------------------Testcode
     .loop1:
@@ -214,7 +213,11 @@ install_keyboard:
 
 install_memory:
     mov al, 0xb8
-    mov bx, memory_reserve_bytes
+    mov bx, memory_allocate
+    call kernel_install_interrupt
+
+    mov al, 0xb9
+    mov bx, memory_free
     call kernel_install_interrupt
 
     mov si, memory_installed_msg
