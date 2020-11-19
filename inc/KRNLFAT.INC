@@ -35,6 +35,12 @@ FAT_IDENT_LENGTH            equ 11
 FAT_FILETYPE_SEPERATOR      equ '.'
 FAT_READ_RETRIES            equ 8
 FAT_DISK_OPERATION_IDENT    equ '.'
+FAT_FILE_HANDLE_SIZE        equ 32
+
+FAT_FILE_HANDLE_OFFSET_CURSOR       equ 0x0b
+FAT_FILE_HANDLE_OFFSET_FILE_SIZE    equ 0x0f
+FAT_FILE_HANDLE_OFFSET_SEGMENT      equ 0x11
+FAT_FILE_HANDLE_OFFSET_OFFSET       equ 0x13
 
 %include "COMMON.INC"
 ;-------------------------------------------------------------------------------
@@ -46,6 +52,7 @@ fat_ident_buffer times FAT_IDENT_LENGTH + 1 db 0 ; NNNNNNNNEEE0
 fat_data_start_sector dw 0 ; Start of data on disk -> Offset is boot sector and other reserved sectors
 fat_print_dot_on_disk_access db 1
 fat_current_drive db 0
+NOT_IMPLEMENTED db "THIS FEATURE IS NOT YET IMPLEMENTED! BREAKPOINT IS GENERATED JUST BEFOR THIS CALL -> CHECK CALLER VIA STACK", 0
 
 %include "OEMPARAM.INC"
 ;-------------------------------------------------------------------------------
@@ -171,6 +178,8 @@ fat_load:
     mov bp, di ; offset to load to
 
     call fat_load_root_directory
+    mov ax, 0
+    mov cx, 0xffff
     call fat_inc_load_file
     
     pop es
@@ -291,6 +300,8 @@ fat_transform_filename_fat_format:
 ; Loads a file 
 ;
 ; input: 
+;   ax -> Start sector 
+;   cx -> Sector count (0xffff to read the complete file)
 ;   es:si -> Filename to load
 ;   bx:bp -> Buffer to load file to
 ;
@@ -299,20 +310,19 @@ fat_transform_filename_fat_format:
 ;   cx -> Number of loaded sectors
 ;-------------------------------------------------------------------------------
 fat_inc_load_file:
-    xor cx, cx
-    push cx
+    mov word [cs:.loaded_sectors], 0
 
     .find:
         push bx
         push bp
-        push es
-        pop ds
-        call fat_search_file
-        cmp ax, -1
-        jne .load_file_stage1
+            push es
+            pop ds
+            call fat_search_file
+            cmp ax, -1
+            jne .load_file_stage1
+        ; Else exit
         pop bp
         pop bx
-        pop cx
         stc
         ret
 
@@ -335,8 +345,11 @@ fat_inc_load_file:
         call fat_load_file_allocation_table
 
     .load_file_stage2:
+        cmp cx, 0
+        je .no_error ; max sector count 
+
         ; Read the file into memory
-        mov ax, word [.cluster]
+        mov ax, word [cs:.cluster]
         pop es
         pop bx
         int 0xe1 ; convert cluster to lba
@@ -344,14 +357,15 @@ fat_inc_load_file:
         mov ax, dx
         mov dl, [cs:fat_current_drive]
 
-        xor cx, cx
-        mov cl, byte [bpbSectorsPerCluster]
-        call fat_read_device
+        push cx
+            xor cx, cx
+            mov cl, byte [cs:bpbSectorsPerCluster]
+            call fat_read_device
+        pop cx
 
         ; Increase sectors read
-        pop cx
-        inc cx
-        push cx
+        inc word [cs:.loaded_sectors]
+        dec cx
 
         ; Save for next iteration
         push bx
@@ -362,14 +376,16 @@ fat_inc_load_file:
         mov es, ax
         mov bx, FAT_OFFSET
 
-        mov ax, word [.cluster] ; current cluster
-        mov cx, ax
-        mov dx, ax
-        shr dx, 1 ; divide by 2
-        add cx, dx ; sum for 3/2 cluster
+        push cx
+            mov ax, word [cs:.cluster] ; current cluster
+            mov cx, ax
+            mov dx, ax
+            shr dx, 1 ; divide by 2
+            add cx, dx ; sum for 3/2 cluster
 
-        add bx, cx ; index for file in fat
-        mov dx, word [es:bx] ; read two bytes (16 bit (but we only need 12) from fat)
+            add bx, cx ; index for file in fat
+            mov dx, word [es:bx] ; read two bytes (16 bit (but we only need 12) from fat)
+        pop cx
         test ax, 1
         jnz .odd_cluster
 
@@ -382,20 +398,23 @@ fat_inc_load_file:
         jmp .done_cluster_arithmetic
 
     .done_cluster_arithmetic:
-        mov word [.cluster], dx ; next cluster
+        mov word [cs:.cluster], dx ; next cluster
         cmp dx, 0x0ff0 ; end of file marker
         jb .load_file_stage2
 
+    .no_error:
         clc ; No error 
         jmp .done
 
     .done:
         pop es
         pop bx
-        pop cx
+        ;pop cx
+        mov cx, [cs:.loaded_sectors]
         ret
 
     .cluster dw 0
+    .loaded_sectors dw 0
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
@@ -419,7 +438,7 @@ fat_search_file:
     mov bx, si ; Save filename
 
     ; Browse root directory for file...
-    mov cx, word [bpbRootEntries]
+    mov cx, word [cs:bpbRootEntries]
     mov di, ROOT_OFFSET
     cld ; Clear direction for string operation
 
@@ -505,10 +524,401 @@ fat_read_device:
         pop cx
         pop bx
         pop ax
-        add bx, word [bpbBytesPerSector] ; next sector
+        add bx, word [cs:bpbBytesPerSector] ; next sector
         inc ax ; read next sector
         loop fat_read_device ; repeat until cx sectors are read
         ret
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Get file size
+;
+; input:
+;    ds:si -> filename in 8.3 format
+;
+; output:
+;    ax -> file size in sectors (-1, if file does not exist)
+;-------------------------------------------------------------------------------
+fat_get_file_size:
+    pusha
+    push ds
+    push es
+
+    ; Extract filename -> Write to cs:fat_ident_buffer
+    push es
+    push cs
+    pop es
+        push di
+            mov di, fat_ident_buffer
+            call fat_transform_filename_fat_format
+        pop di
+
+        ; Load file specified by fat_ident_buffer
+        push cs
+        pop ds
+        mov si, fat_ident_buffer
+    pop es
+
+    call fat_load_root_directory
+    
+    call fat_search_file
+    cmp ax, -1
+    jne .extract_size
+    mov [cs:.file_size_sectors], ax ; Set error code
+    jmp .done
+
+    .extract_size:
+        push word ROOT_SEGMENT
+        pop es
+        mov dx, word [es:di + 0x001c] ; es:di points to start of root dir entry of the file (+28 for file size) ; Low word
+        mov bx, word [es:di + 0x001e] ; second half of file size in bytes (+30) ; High word
+        mov [cs:.file_size_bytes], bx
+        mov [cs:.file_size_bytes + 2], dx
+
+    ; Divide File size by bytes per sector
+    ; Max file size: max(AX)*bytes_per_sector = 0xffff*512 = 31GiB
+    mov dx, [cs:.file_size_bytes]
+    mov ax, [cs:.file_size_bytes + 2]
+    mov cx, [cs:bpbBytesPerSector]
+    div cx
+    cmp dx, 0
+    je .no_inc_sector
+    inc ax
+    .no_inc_sector:
+    mov [cs:.file_size_sectors], ax
+
+    ; see: http://tbruylan.blogspot.com/2013/01/32-bit-division-on-old-school-8086.html
+    ;push es
+    ;    push cs
+    ;    push cs
+    ;    pop ds
+    ;    pop es
+    ;    cld
+        
+    ;    mov si, .file_size_bytes
+    ;    mov di, .file_size_sectors
+    ;    mov cx, [cs:bpbBytesPerSector]
+
+;        xor dx, dx ; set DX := 0
+;        lodsw ; load the higher 16-bits into AX
+;        div cx ; divide DX:AX by CX
+;               ; leaves DX with remainder and AX with quotient
+;        stosw ; write out AX to result
+
+    ;    lodsw ; load the lower 16-bits into AX
+    ;    div cx ; divide DX::AX by CX
+    ;           ; leaves DX with remainder and AX with quotient
+    ;    stosw ; write out AX to result
+    ;pop es
+
+    .done:
+        pop es
+        pop ds
+        popa
+        mov ax, [cs:.file_size_sectors]
+        iret
+
+    .file_size_bytes dd 0 ; 4 byte file size
+    .file_size_sectors dw 0
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Open (or create) file
+;
+; input: 
+;   ds:si -> filename
+;
+; output:
+;   bp:bx -> Address of file handle (bp=-1 if not enough memory)
+;-------------------------------------------------------------------------------
+; File handle:
+; 0x00 (11 Bytes) File name in fat format
+; 0x0b (4 Bytes) Current cursor position in file
+; 0x0f (2 Bytes) Current file size in clusters (updated on each write)
+; 0x11 (2 Bytes) Segment of loaded file
+; 0x13 (2 Bytes) Offset of loaded file
+; 0x15 (9 Bytes) Unused
+;-------------------------------------------------------------------------------
+fat_open:
+    push ds
+    push si
+
+        mov ax, FAT_FILE_HANDLE_SIZE
+        push bx
+            int 0xb8 ; Allocate file handle
+            cmp dx, 0xffff
+            jne .save_handle_address
+            mov bp, -1
+            pop bx
+            jmp .done
+
+            .save_handle_address:
+            mov [cs:.handle_segment], bx
+            mov [cs:.handle_offset], dx     
+        pop bx
+
+        ; Extract filename
+        ; es is set to target location for file, set to current segment to access strings
+        push es
+            push cs
+            pop es
+            push di
+                mov di, fat_ident_buffer
+                call fat_transform_filename_fat_format
+            pop di
+        pop es
+
+        ; Write filename to handle
+        push cs
+        pop ds
+        mov si, fat_ident_buffer
+        push word [cs:.handle_segment]
+        pop es
+        push word [cs:.handle_offset]
+        pop di
+        cld 
+        mov cx, FAT_IDENT_LENGTH
+        rep movsb
+
+        ; set cursor position to 0
+        mov ax, 0
+        stosw
+        stosw
+
+    ; Get filename and store it again
+    pop si
+    pop ds
+    push ds
+    push si
+    int 0xc1 ; Get file size
+    cmp ax, -1
+    jne .file_exists 
+        ; Current file size in cluster is 1 
+        mov ax, 1
+        stosw
+        ; Create file in fat and root dir
+    jmp .not_impl
+    jmp .allocate_file_address
+    .file_exists:
+        ; if file exists, write file size to file handle
+        stosw
+
+    .allocate_file_address:
+        mov ax, [cs:bpbBytesPerSector]
+        int 0xb8 ; Allocate one sector
+        cmp dx, 0xffff
+        jne .write_file_address_to_handle
+            ; Not enough space to allocate file
+        jmp .error_deallocate_handle
+        .write_file_address_to_handle:
+            mov ax, bx
+            stosw
+            mov ax, dx
+            stosw
+
+            ; Read file to address
+            ; Get filename and store it again
+            push es
+            pusha
+                call fat_load_root_directory
+                ;   ax -> Start sector 
+                ;   cx -> Sector count (0xffff to read the complete file)
+                ;   es:si -> Filename to load
+                ;   bx:bp -> Buffer to load file to
+                ;
+                ; output:
+                ;   carry -> on error
+                ;   cx -> Number of loaded sectors
+                mov ax, 0
+                mov cx, 1
+                ; First 11 bytes of handler are file name in 83 notation
+                push word [cs:.handle_segment]
+                pop es
+                push word [cs:.handle_offset]
+                pop si
+                ;mov si, si
+                ;mov bx, bx
+                mov bp, dx
+                call fat_inc_load_file
+            popa
+            pop es
+            jc .error_deallocate_file_and_handle
+
+            ; Set bp:bx to file handle location and exit
+            push word [cs:.handle_segment]
+            pop bp
+            push word [cs:.handle_offset]
+            pop bx
+        jmp .done
+
+    .error_deallocate_file_and_handle:
+        ; Deallocate file
+        mov ax, [cs:.handle_segment]
+        mov ds, ax
+        mov si, [cs:.handle_offset]
+        mov ax, [cs:bpbBytesPerSector]
+        mov bx, [ds:si + FAT_FILE_HANDLE_OFFSET_SEGMENT]
+        mov dx, [ds:si + FAT_FILE_HANDLE_OFFSET_OFFSET]
+        int 0xb9
+    .error_deallocate_handle:
+        ; Deallocate filehandle and return
+        mov ax, FAT_FILE_HANDLE_SIZE
+        mov bx, [cs:.handle_segment]
+        mov dx, [cs:.handle_offset]
+        int 0xb9
+        mov bp, -1 ; error code
+    jmp .done
+
+    .done:
+        pop si
+        pop ds
+        iret
+
+    .not_impl:
+        xchg bx, bx
+        push cs
+        pop ds
+        mov si, NOT_IMPLEMENTED
+        int 0x91
+        cli 
+        hlt
+        .hang:
+        nop
+        jmp .hang
+
+    .handle_segment dw 0
+    .handle_offset dw 0
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Close file
+;
+; input: 
+;   bp:bx -> Address of file handle
+;
+; output:
+;   none
+;-------------------------------------------------------------------------------
+fat_close:
+    push ds
+    pusha
+
+    push bx
+        ; Deallocate file
+        mov ds, bp
+        mov si, bx
+        mov ax, [cs:bpbBytesPerSector]
+        mov bx, [ds:si + FAT_FILE_HANDLE_OFFSET_SEGMENT]
+        mov dx, [ds:si + FAT_FILE_HANDLE_OFFSET_OFFSET]
+        int 0xb9
+    pop bx
+
+    ; Deallocate filehandle
+    mov ax, FAT_FILE_HANDLE_SIZE
+    mov dx, bx
+    mov bx, bp
+    int 0xb9
+
+    popa
+    pop ds
+    iret 
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Read next byte
+;
+; input: 
+;   bp:bx -> Address of file handle
+;
+; output:
+;   dl -> Read byte
+;-------------------------------------------------------------------------------
+fat_read_next_byte:
+    xchg bx, bx
+    push cs
+    pop ds
+    mov si, NOT_IMPLEMENTED
+    int 0x91
+    cli 
+    hlt
+    .hang:
+    nop
+    jmp .hang
+    iret
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Read next bytes
+;
+; input: 
+;   bp:bx -> Address of file handle
+;   cx -> Number of bytes to read
+;   es:di -> Address to write the bytes to
+;
+; output:
+;   none
+;-------------------------------------------------------------------------------
+fat_read_next_bytes:
+    xchg bx, bx
+    push cs
+    pop ds
+    mov si, NOT_IMPLEMENTED
+    int 0x91
+    cli 
+    hlt
+    .hang:
+    nop
+    jmp .hang
+    iret
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Write next byte
+;
+; input: 
+;   bp:bx -> Address of file handle
+;   dl -> Byte to write
+;
+; output:
+;   none
+;-------------------------------------------------------------------------------
+fat_write_next_byte:
+    xchg bx, bx
+    push cs
+    pop ds
+    mov si, NOT_IMPLEMENTED
+    int 0x91
+    cli 
+    hlt
+    .hang:
+    nop
+    jmp .hang
+    iret
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Write next bytes
+;
+; input: 
+;   bp:bx -> Address of file handle
+;   cx -> Number of bytes to write
+;   ds:si -> Address to read the bytes from
+;
+; output:
+;   none
+;-------------------------------------------------------------------------------
+fat_write_next_bytes:
+    xchg bx, bx
+    push cs
+    pop ds
+    mov si, NOT_IMPLEMENTED
+    int 0x91
+    cli 
+    hlt
+    .hang:
+    nop
+    jmp .hang
+    iret
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------

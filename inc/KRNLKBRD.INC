@@ -95,6 +95,8 @@ keyboard_init:
 keyboard_update_keymap:
     ; Load keymap to keyboard_keymap
     mov di, keyboard_keymap
+    push cs
+    pop es
     int 0xc0
 
     ret

@@ -127,10 +127,64 @@
 0xc0
     Load file from current drive
     input:
-        ds:si -> filename in 8.3 format
+        ds:si -> filename
         es:di -> read buffer
     output:
         carry flag set on error
+-------------------------------------------------
+0xc1
+    Get file size
+    input:
+        ds:si -> filename
+    output:
+        ax -> file size in sectors (-1 if non existant)
+-------------------------------------------------
+0xc2
+    Open (or create) file
+    input: 
+        ds:si -> filename
+    output:
+        bp:bx -> Address of file handle (-1 if not enough memory)
+-------------------------------------------------
+0xc3
+    Close file
+    input: 
+        bp:bx -> Address of file handle
+    output:
+        none
+-------------------------------------------------
+0xc4
+    Read next byte
+    input: 
+        bp:bx -> Address of file handle
+    output:
+        dl -> Read byte
+-------------------------------------------------
+0xc5
+    Read next bytes
+    input: 
+        bp:bx -> Address of file handle
+        cx -> Number of bytes to read
+        es:di -> Address to write the bytes to
+    output:
+        none
+-------------------------------------------------
+0xc6
+    Write next byte
+    input: 
+        bp:bx -> Address of file handle
+        dl -> Byte to write
+    output:
+        none
+-------------------------------------------------
+0xc7
+    Write next bytes
+    input: 
+        bp:bx -> Address of file handle
+        cx -> Number of bytes to write
+        ds:si -> Address to read the bytes from
+    output:
+        none
 -------------------------------------------------
 0xcf
     Feedback: disk operation
@@ -225,6 +279,13 @@
     input: 
         none
     output:
+        none
+-------------------------------------------------
+0xf1
+    Color Test
+    input:
+        none
+    output: 
         none
 -------------------------------------------------
 0xff

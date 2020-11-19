@@ -40,7 +40,7 @@ DISPLAY_GFX_SCREEN_HEIGHT   equ 200
 ;-------------------------------------------------------------------------------
 display_video_mode   db 0x00
 
-display_color        db 0x02 ; high nibble is background, low nibble foreground
+display_color        db 0x06 ; high nibble is background, low nibble foreground
 display_enable_blink db FALSE ; enables blinking or high intensity color
 display_current_x    db 0
 display_current_y    db 0

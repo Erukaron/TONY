@@ -74,9 +74,12 @@ kernel_setup:
     call install_convert
     call install_mlt
 
-    ; read kernel config file
-    ; Todo Adjust keymap file to file from kernel config
-    ; Todo Adjust font ; to file from kernel config
+    mov al, 0xf1
+    mov bx, _kernel_test_gfx
+    call kernel_install_interrupt
+
+    ; adjust kernel settings
+    call process_config_file
 
     ; read keyboard file
     mov si, keymap_file
@@ -86,6 +89,7 @@ kernel_setup:
     mov si, font_file
     call display_update_font
 
+    ; check if gfx mode should be enabled
     mov ah, FUNC_KEY_F8
     int 0xb2
     cmp al, 0x01
@@ -96,6 +100,8 @@ kernel_setup:
     .no_gfx_mode:
 
     ; -------------------Testcode
+    ;int 0xf1 ; GFX Test
+
     .loop1:
     mov cx, 256
     mov ax, cs
@@ -232,6 +238,34 @@ install_fat:
     mov bx, fat_load
     call kernel_install_interrupt
 
+    mov al, 0xc1
+    mov bx, fat_get_file_size
+    call kernel_install_interrupt
+
+    mov al, 0xc2
+    mov bx, fat_open
+    call kernel_install_interrupt
+
+    mov al, 0xc3
+    mov bx, fat_close
+    call kernel_install_interrupt
+
+    mov al, 0xc4
+    mov bx, fat_read_next_byte
+    call kernel_install_interrupt
+
+    mov al, 0xc5
+    mov bx, fat_read_next_bytes
+    call kernel_install_interrupt
+
+    mov al, 0xc6
+    mov bx, fat_write_next_byte
+    call kernel_install_interrupt
+
+    mov al, 0xc7
+    mov bx, fat_write_next_bytes
+    call kernel_install_interrupt
+
     mov al, 0xcf
     mov bx, fat_callback_disk_operation
     call kernel_install_interrupt
@@ -361,7 +395,6 @@ kernel_acknowledge_hardware_interrupt:
     ret
 ;-------------------------------------------------------------------------------
 
-
 ;-------------------------------------------------------------------------------
 ; Acknowledges all hardware interrupts
 ;
@@ -377,6 +410,80 @@ kernel_acknowledge_hardware_interrupt_slave:
     out 0xa0, al ; send eoi to slave pic
 
     ret
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Read kernel config file and process it
+;
+; input:
+;   none
+;
+; output:
+;   none
+;-------------------------------------------------------------------------------
+process_config_file:
+    mov si, kernel_config_file
+    int 0xc2 ; Open file
+    push bp
+    push bx
+        xchg bx, bx
+
+        ; Build string into stack maybe?!
+
+        ; Todo Adjust keymap file to file from kernel config
+        ; Todo Adjust font ; to file from kernel config
+    pop bx
+    pop bp
+    int 0xc3 ; Close file
+
+    ret
+
+    .config_kbrd_ident db "KBRD_MAP=", 0
+    .config_shell_ident db "SHELL=", 0
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Draw rectangles on the screen to test colors
+;-------------------------------------------------------------------------------
+_kernel_test_gfx:
+    mov cx, 8
+    mov dl, 0
+    .draw_rectangles:
+        mov al, cl
+        mov dh, 10
+        mul dh
+        push cx
+        mov cx, 32
+        .draw_rectangle:
+            mov bx, cx
+            push dx
+                mov dx, 10
+                xchg ax, bx
+                mul dx
+                xchg ax, bx
+            pop dx
+            push ax
+            push cx
+            mov cx, 10
+            .put_line:
+                push cx
+                push bx
+                mov cx, 10
+                .put_pixel:
+                    int 0x94
+                    dec bx
+                loop .put_pixel
+                pop bx
+                pop cx
+                dec al
+            loop .put_line
+            pop cx
+            pop ax
+            inc dl
+        loop .draw_rectangle
+        pop cx
+    loop .draw_rectangles
+    iret
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
