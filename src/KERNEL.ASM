@@ -65,8 +65,8 @@ kernel_setup:
 
     ; timer needs to be initialized first
     call install_timer
-    call install_sound
     call install_display
+    call install_sound
     call install_keyboard
     call install_memory
     call install_fat
@@ -176,20 +176,16 @@ install_display:
     mov bx, display_clear_screen
     call kernel_install_interrupt
 
-    mov si, timer_installed_msg
-    int 0x91
+    mov al, 0x96
+    mov bx, display_get_video_mode
+    call kernel_install_interrupt
 
-    mov si, sound_installed_msg
-    int 0x91
-
-    mov si, display_installed_msg
+    mov si, .wait_msg
     int 0x91
 
     ret
 
-    timer_installed_msg db "Timer interrupts installed.", LINEFEED, RETURN, 0
-    sound_installed_msg db "Sound interrupts installed.", LINEFEED, RETURN, 0
-    display_installed_msg db "Display interrupts installed.", LINEFEED, RETURN, 0
+    .wait_msg db "WAIT", 0
 
 install_keyboard:
     mov al, 0x09 ; IRQ1 = INT9 is keyboard callback
@@ -210,12 +206,7 @@ install_keyboard:
 
     call keyboard_init
 
-    mov si, keyboard_installed_msg
-    int 0x91
-
     ret
-
-    keyboard_installed_msg db "Keyboard interrupts installed.", LINEFEED, RETURN, 0
 
 install_memory:
     mov al, 0xb8
@@ -226,12 +217,7 @@ install_memory:
     mov bx, memory_free
     call kernel_install_interrupt
 
-    mov si, memory_installed_msg
-    int 0x91
-
     ret
-
-    memory_installed_msg db "Memory interrupts installed.", LINEFEED, RETURN, 0
 
 install_fat:
     mov al, 0xc0
@@ -273,12 +259,7 @@ install_fat:
     mov dl, [cs:bootdrive]
     mov [cs:fat_current_drive], dl 
 
-    mov si, fat_installed_msg
-    int 0x91
-
     ret
-
-    fat_installed_msg db "FAT interrupts installed.", LINEFEED, RETURN, 0
 
 install_string:
     mov al, 0xd0
@@ -301,12 +282,7 @@ install_string:
     mov bx, str_split
     call kernel_install_interrupt
 
-    mov si, str_installed_msg
-    int 0x91
-
     ret
-
-    str_installed_msg db "String interrupts installed.", LINEFEED, RETURN, 0
 
 install_convert:
     mov al, 0xe0
@@ -321,24 +297,14 @@ install_convert:
     mov bx, convert_lba_chs
     call kernel_install_interrupt
 
-    mov si, convert_installed_msg
-    int 0x91
-
     ret
-
-    convert_installed_msg db "Convert interrupts installed.", LINEFEED, RETURN, 0
 
 install_mlt:
     mov al, 0xf0
     mov bx, mlt_start
     call kernel_install_interrupt
 
-    mov si, mlt_installed_msg
-    int 0x91
-
     ret
-
-    mlt_installed_msg db "MLT interrupts installed.", LINEFEED, RETURN, 0
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------

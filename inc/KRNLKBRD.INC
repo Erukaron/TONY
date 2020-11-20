@@ -55,6 +55,7 @@ KEYBOARD_KEY_DETECTION_ERROR_2          equ 0xff
 ;-------------------------------------------------------------------------------
 ; Variables
 ;-------------------------------------------------------------------------------
+keyboard_video_mode_cursor db '_'
 keyboard_key_state_table: times 256 db KEYBOARD_KEY_STATE_NOT_PRESSED ; stores "pressed" or "not pressed" for each key
 
 keyboard_keymap: 
@@ -249,10 +250,27 @@ keyboard_callback:
 ;   AL -> character
 ;-------------------------------------------------------------------------------
 keyboard_getch:
+    int 0x96
+    cmp al, VIDEOMODE_ASCII_COLOR_80x25
+    je .no_cursor
+
+        ; Display cursor
+        mov byte [cs:.display_cursor], 1
+        mov al, [cs:keyboard_video_mode_cursor]
+        int 0x90
+
+    .no_cursor:
     sti ; do not block interrupts -> keyboard interrupt needs to work...
     cmp byte [cs:keyboard_key_buffer], 0
-    je keyboard_getch ;No key pressed, wait for keypress...
+    je .no_cursor ;No key pressed, wait for keypress...
 
+        ; remove cursor
+        cmp byte [cs:.display_cursor], 1
+        jne .no_remove_cursor ; carry is set, if cursor is displayed
+        mov al, ASCII_BS
+        int 0x90
+
+    .no_remove_cursor:
     mov al, [cs:keyboard_key_buffer] ; Get key to return
     cmp al, RETURN
     je .insert_lf
@@ -288,6 +306,8 @@ keyboard_getch:
         int 0x90 ; display character
     .ret:
         iret
+
+    .display_cursor db 0
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------

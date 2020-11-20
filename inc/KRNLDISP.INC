@@ -54,8 +54,22 @@ display_lines        db 25
 display_font_array:
     times 512 db 0
 
-display_gfx_bg_color     db 0x04
-display_gfx_fg_color     db 0x0c
+; darker gray
+display_gfx_bg_color     db 19
+; lighter gray 
+;display_gfx_bg_color     db 20
+; amber 1
+display_gfx_fg_color     db 42
+; amber 2
+;display_gfx_fg_color     db 43
+; green 1
+;display_gfx_fg_color     db 50
+; green 2
+;display_gfx_fg_color     db 51
+; blue 1
+;display_gfx_fg_color     db 52
+; blue 2
+;display_gfx_fg_color     db 53
 display_gfx_current_x    dw 0
 display_gfx_current_y    db 0
 display_gfx_max_x        dw 319
@@ -91,7 +105,7 @@ display_gfx_lines        db 33
 ;-------------------------------------------------------------------------------
 display_restore_default_kernel_video_mode:
     mov ah, 0
-    mov al, VIDEOMODE_ASCII_COLOR_80x25
+    mov al, VIDEOMODE_BIOS_ASCII_COLOR_80x25
     mov [cs:display_video_mode], al
     int 0x10
 
@@ -134,20 +148,20 @@ display_set_blink_mode:
 display_switch_video_mode:
     push ax
 
-    mov ah, VIDEOMODE_ASCII_COLOR_80x25
+    mov ah, VIDEOMODE_BIOS_ASCII_COLOR_80x25
     mov [cs:display_video_mode], ah
 
-    cmp al, 0
+    cmp al, VIDEOMODE_ASCII_COLOR_80x25
     jnz .check_gfx_mode
-    mov ah, VIDEOMODE_ASCII_COLOR_80x25
+    mov ah, VIDEOMODE_BIOS_ASCII_COLOR_80x25
     mov [cs:display_video_mode], ah
     jmp .done
 
 
     .check_gfx_mode:
-    cmp al, 1
+    cmp al, VIDEOMODE_GFX_320_200_COLOR
     jnz .done
-    mov ah, VIDEOMODE_GFX_320_200_COLOR
+    mov ah, VIDEOMODE_BIOS_GFX_320_200_COLOR
     mov [cs:display_video_mode], ah
     jmp .done
 
@@ -163,6 +177,32 @@ display_switch_video_mode:
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
+; Returns the current video mode
+;
+; input: 
+;   none
+;
+; output:
+;   AL -> Video mode (0 : Textmode 80x25, 1 : Videomode 320x200)
+;-------------------------------------------------------------------------------
+display_get_video_mode:
+    cmp byte [cs:display_video_mode], VIDEOMODE_BIOS_ASCII_COLOR_80x25
+    jnz .check_gfx_mode
+    mov al, VIDEOMODE_ASCII_COLOR_80x25
+    jmp .done
+
+
+    .check_gfx_mode:
+    cmp byte [cs:display_video_mode], VIDEOMODE_BIOS_GFX_320_200_COLOR
+    jnz .done
+    mov al, VIDEOMODE_GFX_320_200_COLOR
+    jmp .done
+
+    .done:
+        iret
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
 ; Clears the entire screen
 ;
 ; input: 
@@ -175,7 +215,7 @@ display_clear_screen:
     push es
     pusha
 
-    cmp byte [cs:display_video_mode], VIDEOMODE_ASCII_COLOR_80x25
+    cmp byte [cs:display_video_mode], VIDEOMODE_BIOS_ASCII_COLOR_80x25
     jnz .not_VIDEOMODE_ASCII_COLOR_80x25
         push COLORDISPLAY_TEXT_SEGMENT
         pop es
@@ -200,7 +240,7 @@ display_clear_screen:
         mov [cs:display_current_y], al
     .not_VIDEOMODE_ASCII_COLOR_80x25:
 
-    cmp byte [cs:display_video_mode], VIDEOMODE_GFX_320_200_COLOR
+    cmp byte [cs:display_video_mode], VIDEOMODE_BIOS_GFX_320_200_COLOR
     jnz .not_VIDEOMODE_GFX_320_200_COLOR
         push COLORDISPLAY_GFX_SEGMENT
         pop es
@@ -257,7 +297,7 @@ display_update_font:
 ;   none
 ;-------------------------------------------------------------------------------
 display_putch:
-    cmp byte [cs:display_video_mode], VIDEOMODE_GFX_320_200_COLOR
+    cmp byte [cs:display_video_mode], VIDEOMODE_BIOS_GFX_320_200_COLOR
     je display_gfx_putch
 
     pusha
@@ -653,7 +693,7 @@ display_gfx_putch:
 ;   none
 ;-------------------------------------------------------------------------------
 display_update_cursor:
-    cmp byte [cs:display_video_mode], VIDEOMODE_GFX_320_200_COLOR
+    cmp byte [cs:display_video_mode], VIDEOMODE_BIOS_GFX_320_200_COLOR
     je display_gfx_update_cursor
 
     pusha
@@ -780,7 +820,7 @@ display_put_pixel:
     pusha
     push es
 
-    cmp [cs:display_video_mode], byte VIDEOMODE_GFX_320_200_COLOR
+    cmp [cs:display_video_mode], byte VIDEOMODE_BIOS_GFX_320_200_COLOR
     jne .done
 
     cmp al, [cs:display_gfx_max_y]

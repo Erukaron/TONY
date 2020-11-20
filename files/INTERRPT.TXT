@@ -74,7 +74,13 @@
     output:
         none
 --------------------------------------------------
-
+0x96
+    Get current video mode
+    input: 
+        none
+    output:
+        AL -> Video mode (0 : Textmode 80x25, 1 : Videomode 320x200)
+-------------------------------------------------
 
 
 
