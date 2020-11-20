@@ -202,6 +202,28 @@ memory_allocate:
             jmp .found_offset_part2
 
     .done:
+        ; s: segment address o: offset address
+        ; BX:DX = ssss
+        ;       +  oooo
+        ;       = BX:DX = 2,5 byte address
+        ; segment is always a multiple of 0x1000 (see calculation above) and thus 
+        ; determines most signifikant nibble (nibble 0) of the address
+        ;
+        ; offset determines all other nibbles (nibble 1 to nibble 4) of the address
+        ; => This could cause problems, if a hole segment is allocated, because the
+        ;    returned offset could roll over
+        ; To solve this problem let the segment determine nibbles 0 through 3 
+        ; and let the offset determine nibble 4
+        ;
+        ; With a smallest memory unit of 16 bytes this means that the offset should
+        ; always be zero
+
+        push dx
+            shr dx, 4  ; ignore last nibble
+            add bx, dx ; adjust offset nibbles 1 through 3
+        pop dx
+        and dx, 0x000f ; nibbles 0 through 2 of the offset are now addressed by the segment
+
         pop es
         pop ds
         pop di
