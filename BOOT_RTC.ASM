@@ -67,6 +67,10 @@ start:
     cli
 
     ; Unmask interrupt 0x70
+    ;http://www.brokenthorn.com/Resources/OSDev16.html
+    ;http://ece425web.groups.et.byu.net/stable/labs/InterruptMechanism.html
+    ;https://wiki.osdev.org/8259_PIC#Masking
+    ;
     in al, 0xa1
     mov ah, 1
     shl ah, 0
@@ -75,6 +79,8 @@ start:
     out 0xa1, al
 
     ; Turn on irq 8
+    ;https://wiki.osdev.org/RTC
+    ;https://www.compuphase.com/int70.txt
     mov al, 0x8b 
     out 0x70, al ; select register b and disable NMI
 
@@ -121,7 +127,7 @@ interrupt_called:
     mov al, 0x20 ; send end of interrupt (eoi)
     out 0x20, al ; send eoi to master pic
     out 0xa0, al ; send eoi to slave pic
-    
+
     iret
 
 ;--------------------------------------------------------------------------------------

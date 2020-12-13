@@ -32,6 +32,16 @@ jmp kernel_setup
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
+; Constants
+;-------------------------------------------------------------------------------
+PIC1_COMMAND        equ 0x20
+PIC1_DATA           equ 0x21
+PIC2_COMMAND        equ 0xa0
+PIC2_DATA           equ 0xa1
+PIC_EOI_MASK        equ 0x20
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
 ; Variables
 ;-------------------------------------------------------------------------------
 bootdrive db 0
@@ -79,7 +89,7 @@ kernel_setup:
     call kernel_install_interrupt
 
     ; adjust kernel settings
-    call process_config_file
+    ;call process_config_file
 
     ; read keyboard file
     mov si, keymap_file
@@ -131,16 +141,23 @@ kernel_setup:
 ;-------------------------------------------------------------------------------
 install_timer:
     push ds
-    mov ax, 0
-    mov ds, ax
-    mov dx, [ds:0x20] ; Old timer interrupt
-    mov bp, [ds:0x22]
-    ;call timer_init
-    pop ds
+        mov ax, 0
+        mov ds, ax
+        mov dx, [ds:0x01c0] ; Old timer interrupt
+        mov bp, [ds:0x01c2]
 
-    mov al, 0x08 ; Hardware timer
-    mov bx, timer_callback
-    ;call kernel_install_interrupt
+        push dx
+        push bp
+
+            mov al, 0x70 ; rtc timer
+            mov bx, timer_callback
+            call kernel_install_interrupt
+
+        pop bp
+        pop dx
+
+        call timer_init
+    pop ds
 
     mov al, 0x80
     mov bx, timer_get_ticks
@@ -346,6 +363,99 @@ kernel_install_interrupt:
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
+; Enables an hardware interrupt via the PIC
+;
+; input: 
+;   BL -> interrupt line (0-15) -> 2: disable second PIC
+;
+; output:
+;   none
+;-------------------------------------------------------------------------------
+kernel_enable_hardware_interrupt:
+    push ax
+    push bx
+    push cx
+    push dx
+
+    cmp bl, 15 ; There are no more than 15 hardware interrupts
+    jg .done
+
+    cmp bl, 8 ; 0 - 7 -> PIC 1, 8 - 15 -> PIC 2
+    jge .second_pic
+        mov dx, PIC1_DATA
+        jmp .unmask
+
+    .second_pic:
+        mov dx, PIC2_DATA
+        sub bl, 8 ; Calculate interrupt as seen by PIC 2
+
+    .unmask:
+    in al, dx ; Get current mask
+
+    ; Calculate new mask https://wiki.osdev.org/8259_PIC#Masking
+    mov bh, 1 
+    mov cl, bl
+    shl bh, cl
+    not bh
+    and al, bh
+
+    out dx, al ; Write new mask
+
+    .done:
+        pop ax
+        pop bx
+        pop cx
+        pop dx
+        ret
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Disables an hardware interrupt via the PIC
+;
+; input: 
+;   BL -> interrupt line (0-15) -> 2: disable second PIC
+;
+; output:
+;   none
+;-------------------------------------------------------------------------------
+kernel_disable_hardware_interrupt:
+    push ax
+    push bx
+    push cx
+    push dx
+
+    cmp bl, 15 ; There are no more than 15 hardware interrupts
+    jg .done
+
+    cmp bl, 8 ; 0 - 7 -> PIC 1, 8 - 15 -> PIC 2
+    jge .second_pic
+        mov dx, PIC1_DATA
+        jmp .mask
+
+    .second_pic:
+        mov dx, PIC2_DATA
+        sub bl, 8 ; Calculate interrupt as seen by PIC 2
+
+    .mask:
+    in al, dx ; Get current mask
+
+    ; Calculate new mask https://wiki.osdev.org/8259_PIC#Masking
+    mov bh, 1
+    mov cl, bl
+    shl bh, cl
+    or al, bh
+    
+    out dx, al ; Write new mask
+
+    .done:
+        pop ax
+        pop bx
+        pop cx
+        pop dx
+        ret
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
 ; Acknowledges all hardware interrupts
 ;
 ; input:
@@ -355,8 +465,8 @@ kernel_install_interrupt:
 ;   none
 ;-------------------------------------------------------------------------------
 kernel_acknowledge_hardware_interrupt:
-    mov al, 0x20 ; send end of interrupt (eoi)
-    out 0x20, al ; send eoi to master pic
+    mov al, PIC_EOI_MASK ; send end of interrupt (eoi)
+    out PIC1_COMMAND, al ; send eoi to master pic
 
     ret
 ;-------------------------------------------------------------------------------
@@ -371,9 +481,9 @@ kernel_acknowledge_hardware_interrupt:
 ;   none
 ;-------------------------------------------------------------------------------
 kernel_acknowledge_hardware_interrupt_slave:
-    mov al, 0x20 ; send end of interrupt (eoi)
-    out 0x20, al ; send eoi to master pic
-    out 0xa0, al ; send eoi to slave pic
+    mov al, PIC_EOI_MASK ; send end of interrupt (eoi)
+    out PIC1_COMMAND, al ; send eoi to master pic
+    out PIC2_COMMAND, al ; send eoi to slave pic
 
     ret
 ;-------------------------------------------------------------------------------
@@ -394,7 +504,7 @@ process_config_file:
     push bx
         xchg bx, bx
 
-        ; Build string into stack maybe?!
+        ; Build string 
 
         ; Todo Adjust keymap file to file from kernel config
         ; Todo Adjust font ; to file from kernel config

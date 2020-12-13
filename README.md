@@ -4,7 +4,11 @@
 
 -------------------------------------------------
 How to build:
-    - 
+    - Requirements:
+        - nasm needs to be in the path variable
+        - .Net framework 4.7.2 needs to be installed to run FAT_RootDir_Creator -> Creates the root directory, the fat and is used to alter file sizes
+    - Run MAKE.BAT from the main directory (TONY.IMG is located in output folder after a successful build)
+    - Test by: "MAKE.BAT test" or "MAKE.BAT dbg" -> a copy of Bochs-2.6.11 needs to be installed to tools directory
 -------------------------------------------------
 
 -------------------------------------------------
