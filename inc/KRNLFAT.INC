@@ -42,6 +42,8 @@ FAT_FILE_HANDLE_OFFSET_FILE_SIZE    equ 0x0f
 FAT_FILE_HANDLE_OFFSET_SEGMENT      equ 0x11
 FAT_FILE_HANDLE_OFFSET_OFFSET       equ 0x13
 
+FAT_ROOTDIR_OFFSET_START_CLUSTER    equ 0x1a
+
 %include "COMMON.INC"
 ;-------------------------------------------------------------------------------
 
@@ -300,7 +302,7 @@ fat_transform_filename_fat_format:
 ; Loads a file 
 ;
 ; input: 
-;   ax -> Start sector 
+;   ax -> Start cluster 
 ;   cx -> Sector count (0xffff to read the complete file)
 ;   es:si -> Filename to load
 ;   bx:bp -> Buffer to load file to
@@ -317,24 +319,22 @@ fat_inc_load_file:
         push bp
             push es
             pop ds
-            call fat_search_file
-            cmp ax, -1
-            jne .load_file_stage1
+            push ax
+                call fat_search_file
+                cmp ax, -1
+                jne .load_file_stage1
         ; Else exit
+            pop ax
         pop bp
         pop bx
         stc
         ret
 
     .load_file_stage1:
-        ;sub di, ROOT_OFFSET
-        ;sub ax, ROOT_OFFSET
-
-        ; Calculate starting cluster
-        push word ROOT_SEGMENT
-        pop es
-        mov dx, word [es:di + 0x001a] ; es:di points to start of root dir entry of the file (+26 for starting cluster)
-        mov word [.cluster], dx
+        pop ax ; Start cluster
+        ; Calculate starting cluster ES:DI is set to First byte of entry in root dir
+        mov dx, word [es:di + FAT_ROOTDIR_OFFSET_START_CLUSTER] ; es:di points to start of root dir entry of the file (+26 for starting cluster)
+        mov word [cs:.cluster], dx
 
         ; target location (bx:bp -> es:bx)
         pop bx ; See push in .find
@@ -344,18 +344,43 @@ fat_inc_load_file:
 
         call fat_load_file_allocation_table
 
+        ; Advance to start cluster (ax)
+        .advance_to_start_cluster:
+            cmp ax, 0
+            je .start_cluster_ok
+
+            push ax
+                call .calculate_next_cluster
+                mov word [cs:.cluster], dx ; next cluster
+                cmp dx, 0x0ff0 ; end of file marker
+                jb .advance_to_start_cluster_no_eof
+                    ; Error -> Start cluster is larger than file
+                    pop ax
+                    pop es
+                    pop bx
+                    stc 
+                    ret
+
+                .advance_to_start_cluster_no_eof:
+            pop ax
+            dec ax
+            jmp .advance_to_start_cluster
+        .start_cluster_ok:
+
     .load_file_stage2:
         cmp cx, 0
         je .no_error ; max sector count 
 
         ; Read the file into memory
         mov ax, word [cs:.cluster]
-        pop es
-        pop bx
         int 0xe1 ; convert cluster to lba
         add dx, [cs:fat_data_start_sector] ; offset
         mov ax, dx
         mov dl, [cs:fat_current_drive]
+
+        ; target location
+        pop es
+        pop bx
 
         push cx
             xor cx, cx
@@ -371,7 +396,14 @@ fat_inc_load_file:
         push bx
         push es
 
-        ; Calculate next cluster
+        ; Get the next cluster from fat
+        call .calculate_next_cluster
+        mov word [cs:.cluster], dx ; next cluster
+        cmp dx, 0x0ff0 ; end of file marker
+        jb .load_file_stage2
+        jmp .no_error
+
+    .calculate_next_cluster:
         mov ax, FAT_SEGMENT
         mov es, ax
         mov bx, FAT_OFFSET
@@ -389,18 +421,16 @@ fat_inc_load_file:
         test ax, 1
         jnz .odd_cluster
 
-    .even_cluster:
-        and dx, 0000111111111111b ; take 12 lsb
-        jmp .done_cluster_arithmetic
+        .even_cluster:
+            and dx, 0000111111111111b ; take 12 lsb
+            jmp .done_cluster_arithmetic
 
-    .odd_cluster:
-        shr dx, 4 ; take 12 msb 
-        jmp .done_cluster_arithmetic
+        .odd_cluster:
+            shr dx, 4 ; take 12 msb 
+            jmp .done_cluster_arithmetic
 
-    .done_cluster_arithmetic:
-        mov word [cs:.cluster], dx ; next cluster
-        cmp dx, 0x0ff0 ; end of file marker
-        jb .load_file_stage2
+        .done_cluster_arithmetic:
+            ret
 
     .no_error:
         clc ; No error 
@@ -422,10 +452,10 @@ fat_inc_load_file:
 ;
 ; input: 
 ;   ds:si -> Filename
-;   es:di -> First byte of entry if file was found
 ;
 ; output:
 ;   ax -> File index in directory table (-1 if error)
+;   es:di -> First byte of entry if file was found
 ;-------------------------------------------------------------------------------
 fat_search_file:
     mov ax, ROOT_SEGMENT ; di is later set to root_offset, thus es needs to be zero
@@ -479,7 +509,7 @@ fat_search_file:
 ; input: 
 ;   dl -> device
 ;   es:bx -> Buffer to read to
-;   ax -> Start sector
+;   ax -> Start sector (LBA)
 ;   cx -> Number of sectors
 ;
 ; output:
@@ -834,6 +864,11 @@ fat_close:
 ;   dl -> Read byte
 ;-------------------------------------------------------------------------------
 fat_read_next_byte:
+    push ds
+    push si
+    push ax
+    push dx
+
     xchg bx, bx
     push cs
     pop ds
@@ -844,6 +879,36 @@ fat_read_next_byte:
     .hang:
     nop
     jmp .hang
+
+    ; Check if next byte is inside the size of the file
+
+    ;push word [bp:bx + FAT_FILE_HANDLE_OFFSET_SEGMENT]
+    ;pop ds
+    ;push word [bp:bx + FAT_FILE_HANDLE_OFFSET_OFFSET]
+    ;pop si
+
+    ;mov ax, [bp:bx + FAT_FILE_HANDLE_OFFSET_CURSOR]
+    ;mov dx, [bp:bx + FAT_FILE_HANDLE_OFFSET_CURSOR + 2]
+    ; Next byte is at ax:dx
+
+    ; Check if loaded sector contains file byte offset ax:dx
+        ; If not, load required sector
+    ; Read byte into dl
+
+    ; Update cursor
+    inc dx
+    jnc .no_inc_32_bit
+    inc ax
+    .no_inc_32_bit:
+
+    ;mov [bp:bx + FAT_FILE_HANDLE_OFFSET_CURSOR], ax
+    ;mov [bp:bx + FAT_FILE_HANDLE_OFFSET_CURSOR + 2], dx
+
+    pop dx
+    pop ax
+    pop si
+    pop ds
+
     iret
 ;-------------------------------------------------------------------------------
 
