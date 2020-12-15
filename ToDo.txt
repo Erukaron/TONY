@@ -21,3 +21,6 @@
     [ ] Lesen von Shell Datei und entsprechend in freien Speicher laden und ausführen 
 [ ] File open interrupt gibt file zurück mit Adresse, Anfangsposition fat, aktuelles Cluster der Datei im Speicher ; mit file read line interrupt bis eof durch Datei lesen ; mit write Schreiben und mit close Speicher freigeben 
 [ ] Fallout Hacking Login Game -> Über Kernelconfig als shell ladbar -> Lädt dann wiederum shell
+[ ] Berechnungen und Vergleiche für 32-Bit Zahlen
+[ ] String to int
+[ ] int to String

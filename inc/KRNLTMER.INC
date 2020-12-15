@@ -29,17 +29,18 @@
 ;-------------------------------------------------------------------------------
 ; Constants
 ;-------------------------------------------------------------------------------
-PIT_FREQUENCY           equ 1193182     ; oscillation frequency (Hz) of the 8253 PIT
-TIMER_FREQUENCY         equ 1820        ; system timer frequency (Hz)
-TIMER_DEFAULT_FREQUENCY equ 18          ; 18, 2 Hz
-TIMER_TICKS_DEFAULT_FRQ equ TIMER_FREQUENCY / TIMER_DEFAULT_FREQUENCY ; Number of ticks for one tick in default frequency
-TIMER_DIVISOR           equ PIT_FREQUENCY / TIMER_FREQUENCY ; used to configure the PIT
+RTC_TIMER_FREQ_DIVIDER                    equ 3 ; 3 = 8192 Hz | 4 = 4096 Hz | ... | 15 = 2 Hz
+RTC_TIMER_TICKS_TO_MS                     equ 8 ; ~8 ticks = 1ms
+RTC_TIMER_TICKS_TO_MS_REMAINDER           equ 192 ; 8,192 ticks = 1 ms
+RTC_TIMER_TICKS_TO_MS_REMAINDER_DIVIDER   equ 1000
+RTC_TIMER_CRYSTAL_FREQ                    equ 32768 ; Hz
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
 ; Variables
 ;-------------------------------------------------------------------------------
-timer_tick_count dw 0
+timer_tick_count_lo dw 0
+timer_tick_count_hi dw 0
 timer_rtc_bios_int_offset dw 0
 timer_rtc_bios_int_segment dw 0
 ;-------------------------------------------------------------------------------
@@ -65,20 +66,7 @@ timer_init:
     mov bl, 8 ; rtc
     call kernel_enable_hardware_interrupt
 
-    ; Set freq
-    ;mov al, 0x0a
-    ;out 0x70, al
-
-    ;in al, 0x71
-    ;or al, 110b
-    ;mov ah, al
-
-    ;mov al, 0x0a
-    ;out 0x70, al
-
-    ;mov al, ah
-    ;out 0x71, al
-
+    ; Start periodic interrupt
     mov al, 0x8b 
     out 0x70, al ; select register b and disable NMI
 
@@ -92,6 +80,24 @@ timer_init:
     mov al, ah
     out 0x71, al ; Enable periodic interrupt
 
+    ; Set freq
+    mov bl, RTC_TIMER_FREQ_DIVIDER
+    and bl, 0x0f
+
+    mov al, 0x8a ; disable NMI and select reg A
+    out 0x70, al
+
+    in al, 0x71
+    mov ah, al
+    and ah, 0xf0 ; erase current divisor settings
+    or ah, bl
+
+    mov al, 0x8a
+    out 0x70, al
+
+    mov al, ah
+    out 0x71, al
+
     ; read register c to allow for new interrupts
     mov al, 0x0c
     out 0x70, al
@@ -103,7 +109,8 @@ timer_init:
     in al, 0x71
 
     ; reset timer
-    mov word [cs:timer_tick_count], 0
+    mov word [cs:timer_tick_count_lo], 0
+    mov word [cs:timer_tick_count_hi], 0
 
     sti
     popa
@@ -122,19 +129,17 @@ timer_init:
 timer_callback:
     push ax
 
-    inc word [cs:timer_tick_count]
+    mov ax, word [cs:timer_tick_count_lo]
+    add ax, 1
+    jnc .no_inc_hi
+        mov ax, 0
+        inc word [cs:timer_tick_count_hi]
 
-    ; read register c to allow for new interrupts
-    mov al, 0x0c
-    out 0x70, al
-    in al, 0x71
+    .no_inc_hi:
 
-    ; Also set to register d according to https://www.compuphase.com/int70.txt
-    mov al, 0x0d
-    out 0x70, al
-    in al, 0x71
+    mov word [cs:timer_tick_count_lo], ax
     
-    ; Bios interrupt
+    ; Bios interrupt -> Reads cmos registers and sends eoi
     pushf
     push cs
     push .next_inst_after_int
@@ -147,21 +152,124 @@ timer_callback:
     .next_inst_after_int:
 
     pop ax
-    call kernel_acknowledge_hardware_interrupt_slave
     iret
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
-; Returns the number of timer ticks (each tick is one milli second)
+; Returns the number of timer ticks (each tick is 122µs)
 ;
 ; input: 
 ;   none
 ;
 ; output:
-;   timer ticks AX
+;   AX -> timer ticks hi
+;   DX -> timer ticks lo
 ;-------------------------------------------------------------------------------
 timer_get_ticks:
-    mov ax, [cs:timer_tick_count]
+    mov ax, [cs:timer_tick_count_hi]
+    mov dx, [cs:timer_tick_count_lo]
+    iret
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Sleep millis
+;
+; input: 
+;   AX -> milli seconds
+;
+; output:
+;   none
+;-------------------------------------------------------------------------------
+timer_sleep_millis:
+    sti ; Allow interrupts, otherwise there will be no counting
+
+    pusha
+        mov bx, ax
+
+        xor cx, cx
+        mov cl, RTC_TIMER_TICKS_TO_MS
+        mul cx ; dx:ax -> Number of ticks to wait
+
+        add ax, [cs:timer_tick_count_lo]
+        jnc .no_increase_dx
+            inc dx
+
+        .no_increase_dx:
+        add dx, [cs:timer_tick_count_hi]
+
+        push ax
+        push dx
+            ; calculate error from RTC_TIMER_TICKS_TO_MS
+            ; Example:
+            ; Input is: 3000ms
+            ; The code above alone would sleep for: 3000*8 = 240000 ticks
+            ; 24000 ticks => 24000/8192 = 2,93s
+            ; With the code below:
+            ; 3000 / 1000 = 3
+            xor dx, dx
+            mov ax, bx
+            xor cx, cx
+            mov cx, RTC_TIMER_TICKS_TO_MS_REMAINDER_DIVIDER
+            div cx
+
+            ; 3 * 192 = 576 ticks
+            xor cx, cx
+            mov cl, RTC_TIMER_TICKS_TO_MS_REMAINDER
+            mul cx
+
+            mov bx, ax
+            mov cx, dx
+        pop dx
+        pop ax
+
+        ; Continuing the example from above:
+        ; 24000 ticks + 576 ticks = 24576 ticks / 8192 = 3s
+        ; => The correction does only work for sleep periods of 1000ms or more
+        add ax, bx
+        jnc .no_increase_dx_2
+            inc dx
+
+        .no_increase_dx_2:
+        add dx, cx
+
+        ; Wait until timer ticks are equal or greater than the calculated tick count
+        .wait:
+            cmp [cs:timer_tick_count_hi], dx
+            ja .done
+            jb .wait
+
+            ; high ticks are equal
+            cmp [cs:timer_tick_count_lo], ax
+            ja .done
+            jb .wait
+
+    .done:
+        popa
+
+        iret
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Sleep
+;
+; input: 
+;   AX -> seconds
+;
+; output:
+;   none
+;-------------------------------------------------------------------------------
+timer_sleep_seconds:
+    push cx
+    push ax
+
+    mov cx, ax
+    mov ax, 1000
+    .wait_1000ms:
+        int 0x81 ; timer_sleep_millis
+        loop .wait_1000ms
+
+    pop ax
+    pop cx
     iret
 ;-------------------------------------------------------------------------------
 

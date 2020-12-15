@@ -16,11 +16,28 @@
 
 -------------------------------------------------
 0x80
-	Get timer ticks (1000Hz)
+	Get timer ticks (8192Hz)
 	input: 
 		none
 	output: 
-		AX -> timer ticks
+		AX -> timer ticks hi
+        DX -> timer ticks lo
+-------------------------------------------------
+0x81
+    Sleep milliseconds
+    input: 
+        AX -> milli seconds
+
+    output:
+        none
+-------------------------------------------------
+0x82
+    Sleep seconds
+    input: 
+        AX -> seconds
+
+    output:
+        none
 -------------------------------------------------
 
 

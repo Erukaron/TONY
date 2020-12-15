@@ -524,12 +524,12 @@ fat_read_device:
         push cx
 
         push bx
-        mov bl, dl ; remember device
-        mov dx, ax
+            mov bl, dl ; remember device
+            mov dx, ax
 
-        int 0xe2 ; Convert lba to chs
+            int 0xe2 ; Convert lba to chs
 
-        mov dl, bl
+            mov dl, bl
         pop bx
 
         mov ah, 0x02 ; Read device es:bx

@@ -61,7 +61,7 @@ display_gfx_bg_color     db 19
 ; amber 1
 ;display_gfx_fg_color     db 42
 ; amber 2
-;display_gfx_fg_color     db 43
+display_gfx_fg_color     db 43
 ; green 1
 ;display_gfx_fg_color     db 50
 ; green 2
@@ -71,7 +71,7 @@ display_gfx_bg_color     db 19
 ; blue 2
 ;display_gfx_fg_color     db 53
 ; white
-display_gfx_fg_color     db 255
+;display_gfx_fg_color     db 15
 display_gfx_current_x    dw 0
 display_gfx_current_y    db 0
 display_gfx_max_x        dw 319

@@ -110,7 +110,13 @@ kernel_setup:
     .no_gfx_mode:
 
     ; -------------------Testcode
-    ;int 0xf1 ; GFX Test
+    int 0xf1 ; GFX Test
+
+    ; Wait 5 sec
+    mov ax, 5000
+    int 0x81
+
+    int 0x95 ; cls
 
     .loop1:
     mov cx, 256
@@ -148,11 +154,9 @@ install_timer:
 
         push dx
         push bp
-
             mov al, 0x70 ; rtc timer
             mov bx, timer_callback
             call kernel_install_interrupt
-
         pop bp
         pop dx
 
@@ -161,6 +165,14 @@ install_timer:
 
     mov al, 0x80
     mov bx, timer_get_ticks
+    call kernel_install_interrupt
+
+    mov al, 0x81
+    mov bx, timer_sleep_millis
+    call kernel_install_interrupt
+
+    mov al, 0x82
+    mov bx, timer_sleep_seconds
     call kernel_install_interrupt
 
     ret
