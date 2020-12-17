@@ -29,11 +29,16 @@
 ;-------------------------------------------------------------------------------
 ; Constants
 ;-------------------------------------------------------------------------------
-RTC_TIMER_FREQ_DIVIDER                    equ 3 ; 3 = 8192 Hz | 4 = 4096 Hz | ... | 15 = 2 Hz
-RTC_TIMER_TICKS_TO_MS                     equ 8 ; ~8 ticks = 1ms
-RTC_TIMER_TICKS_TO_MS_REMAINDER           equ 192 ; 8,192 ticks = 1 ms
-RTC_TIMER_TICKS_TO_MS_REMAINDER_DIVIDER   equ 1000
-RTC_TIMER_CRYSTAL_FREQ                    equ 32768 ; Hz
+PIT_FREQUENCY                    equ 1193182     ; oscillation frequency (Hz) of the 8253 PIT
+TIMER_FREQUENCY                  equ 1165        ; system timer frequency (Hz) (1193182 / 2^3)
+TIMER_DEFAULT_FREQUENCY          equ 18          ; 18, 2 Hz
+TIMER_TICKS_DEFAULT_FRQ          equ TIMER_FREQUENCY / TIMER_DEFAULT_FREQUENCY ; Number of ticks for one tick in default frequency
+TIMER_DIVISOR                    equ PIT_FREQUENCY / TIMER_FREQUENCY ; used to configure the PIT
+TIMER_TICKS_TO_MS                equ 1 ; ,165216797    0.001 / (1 / TIMER_FREQUENCY)
+; used for correction while sleeping
+TIMER_TICKS_TO_MS_REMAINDER_1    equ 1
+TIMER_TICKS_TO_MS_REMAINDER_10   equ 6
+TIMER_TICKS_TO_MS_REMAINDER_100  equ 5
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
@@ -41,8 +46,9 @@ RTC_TIMER_CRYSTAL_FREQ                    equ 32768 ; Hz
 ;-------------------------------------------------------------------------------
 timer_tick_count_lo dw 0
 timer_tick_count_hi dw 0
-timer_rtc_bios_int_offset dw 0
-timer_rtc_bios_int_segment dw 0
+timer_bios_tick_count dw TIMER_FREQUENCY / TIMER_DEFAULT_FREQUENCY
+timer_bios_int_offset dw 0
+timer_bios_int_segment dw 0
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
@@ -57,60 +63,23 @@ timer_rtc_bios_int_segment dw 0
 timer_init:
     pusha 
 
-    mov [cs:timer_rtc_bios_int_offset], dx
-    mov [cs:timer_rtc_bios_int_segment], bp
+    mov [cs:timer_bios_int_offset], dx
+    mov [cs:timer_bios_int_segment], bp
 
     cli 
 
-    ; Unmask interrupt...
-    mov bl, 8 ; rtc
-    call kernel_enable_hardware_interrupt
+    mov al, 0b00110100                 ; PIT channel 0
+    out 43h, al                 ; select channel
 
-    ; Start periodic interrupt
-    mov al, 0x8b 
-    out 0x70, al ; select register b and disable NMI
-
-    in al, 0x71 ; read current content of register b
-    mov ah, al
-
-    mov al, 0x8b
-    out 0x70, al ; reset register b
-
-    or ah, 0x40
+    mov ax, TIMER_DIVISOR
+    out 40h, al    ;send low byte
     mov al, ah
-    out 0x71, al ; Enable periodic interrupt
-
-    ; Set freq
-    mov bl, RTC_TIMER_FREQ_DIVIDER
-    and bl, 0x0f
-
-    mov al, 0x8a ; disable NMI and select reg A
-    out 0x70, al
-
-    in al, 0x71
-    mov ah, al
-    and ah, 0xf0 ; erase current divisor settings
-    or ah, bl
-
-    mov al, 0x8a
-    out 0x70, al
-
-    mov al, ah
-    out 0x71, al
-
-    ; read register c to allow for new interrupts
-    mov al, 0x0c
-    out 0x70, al
-    in al, 0x71
-
-    ; Also set to register d according to https://www.compuphase.com/int70.txt
-    mov al, 0x0d
-    out 0x70, al
-    in al, 0x71
+    out 40h, al    ;send high byte
 
     ; reset timer
     mov word [cs:timer_tick_count_lo], 0
     mov word [cs:timer_tick_count_hi], 0
+    mov word [cs:timer_bios_tick_count], TIMER_FREQUENCY / TIMER_DEFAULT_FREQUENCY
 
     sti
     popa
@@ -138,21 +107,27 @@ timer_callback:
     .no_inc_hi:
 
     mov word [cs:timer_tick_count_lo], ax
-    
-    ; Bios interrupt -> Reads cmos registers and sends eoi
-    pushf
-    push cs
-    push .next_inst_after_int
-    ; Load interrupt location into the stack
-    push word [cs:timer_rtc_bios_int_segment]
-    push word [cs:timer_rtc_bios_int_offset]
-    ; Jump to bios interrupt location via stack
-    retf
 
-    .next_inst_after_int:
+    cmp word [cs:timer_bios_tick_count], TIMER_FREQUENCY / TIMER_DEFAULT_FREQUENCY
+    jb .no_int_yet
+        mov byte [cs:timer_bios_tick_count], 0
+        
+        ; Bios interrupt -> Reads cmos registers and sends eoi
+        pushf
+        push cs
+        push .done
+        ; Load interrupt location into the stack
+        push word [cs:timer_bios_int_segment]
+        push word [cs:timer_bios_int_offset]
+        ; Jump to bios interrupt location via stack
+        retf
 
-    pop ax
-    iret
+    .no_int_yet:
+        call kernel_acknowledge_hardware_interrupt
+
+    .done:
+        pop ax
+        iret
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
@@ -181,13 +156,10 @@ timer_get_ticks:
 ;   none
 ;-------------------------------------------------------------------------------
 timer_sleep_millis:
-    sti ; Allow interrupts, otherwise there will be no counting
-
     pusha
         mov bx, ax
 
-        xor cx, cx
-        mov cl, RTC_TIMER_TICKS_TO_MS
+        mov cx, TIMER_TICKS_TO_MS
         mul cx ; dx:ax -> Number of ticks to wait
 
         add ax, [cs:timer_tick_count_lo]
@@ -197,43 +169,34 @@ timer_sleep_millis:
         .no_increase_dx:
         add dx, [cs:timer_tick_count_hi]
 
-        push ax
-        push dx
-            ; calculate error from RTC_TIMER_TICKS_TO_MS
-            ; Example:
-            ; Input is: 3000ms
-            ; The code above alone would sleep for: 3000*8 = 240000 ticks
-            ; 24000 ticks => 24000/8192 = 2,93s
-            ; With the code below:
-            ; 3000 / 1000 = 3
-            xor dx, dx
-            mov ax, bx
-            xor cx, cx
-            mov cx, RTC_TIMER_TICKS_TO_MS_REMAINDER_DIVIDER
-            div cx
+        sti ; allow time keeping while calculating correction
 
-            ; 3 * 192 = 576 ticks
-            xor cx, cx
-            mov cl, RTC_TIMER_TICKS_TO_MS_REMAINDER
-            mul cx
-
-            mov bx, ax
-            mov cx, dx
-        pop dx
-        pop ax
-
-        ; Continuing the example from above:
-        ; 24000 ticks + 576 ticks = 24576 ticks / 8192 = 3s
-        ; => The correction does only work for sleep periods of 1000ms or more
-        add ax, bx
-        jnc .no_increase_dx_2
-            inc dx
-
-        .no_increase_dx_2:
-        add dx, cx
+        mov byte [cs:.correction_factor], TIMER_TICKS_TO_MS_REMAINDER_1
+        mov word [cs:.correction_divisor], 10
+        call .correct
+        mov byte [cs:.correction_factor], TIMER_TICKS_TO_MS_REMAINDER_10
+        mov word [cs:.correction_divisor], 100
+        call .correct
+        mov byte [cs:.correction_factor], TIMER_TICKS_TO_MS_REMAINDER_100
+        mov word [cs:.correction_divisor], 1000
+        call .correct
 
         ; Wait until timer ticks are equal or greater than the calculated tick count
         .wait:
+            sti
+            nop ; nop a few times so the interrupt can get handled
+            nop
+            nop
+            nop
+            nop
+            nop
+            nop
+            nop
+            nop
+            nop
+
+            cli
+
             cmp [cs:timer_tick_count_hi], dx
             ja .done
             jb .wait
@@ -247,6 +210,49 @@ timer_sleep_millis:
         popa
 
         iret
+
+    .correct:
+        push bx
+            push ax
+            push dx
+                ; calculate error from RTC_TIMER_TICKS_TO_MS
+                ; Example:
+                ; Input is: 3000ms
+                ; The code above alone would sleep for: 3000*8 = 240000 ticks
+                ; 24000 ticks => 24000/8192 = 2,93s
+                ; With the code below:
+                ; 3000 / 1000 = 3
+                xor dx, dx
+                mov ax, bx
+                xor cx, cx
+                mov cx, [cs:.correction_divisor]
+                div cx
+
+                ; 3 * 192 = 576 ticks
+                xor cx, cx
+                mov cl, [cs:.correction_factor]
+                mul cx
+
+                mov bx, ax
+                mov cx, dx
+            pop dx
+            pop ax
+
+            ; Continuing the example from above:
+            ; 24000 ticks + 576 ticks = 24576 ticks / 8192 = 3s
+            add ax, bx
+            jnc .no_increase_dx_2
+                inc dx
+
+            .no_increase_dx_2:
+            add dx, cx
+
+        pop bx
+
+        ret
+
+    .correction_factor db 0
+    .correction_divisor dw 0
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------

@@ -112,7 +112,7 @@ kernel_setup:
     ; -------------------Testcode
     int 0xf1 ; GFX Test
 
-    ; Wait 5 sec
+    ; Wait 5 seconds
     mov ax, 5000
     int 0x81
 
@@ -149,12 +149,12 @@ install_timer:
     push ds
         mov ax, 0
         mov ds, ax
-        mov dx, [ds:0x01c0] ; Old timer interrupt
-        mov bp, [ds:0x01c2]
+        mov dx, [ds:0x20] ; Old timer interrupt
+        mov bp, [ds:0x22]
 
         push dx
         push bp
-            mov al, 0x70 ; rtc timer
+            mov al, 0x08 ; pit timer
             mov bx, timer_callback
             call kernel_install_interrupt
         pop bp

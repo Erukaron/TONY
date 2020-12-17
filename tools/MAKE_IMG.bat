@@ -9,6 +9,11 @@ if "%1"=="no-cleanup" set tidy=false
 if "%1"=="no-tidy" set tidy=false
 if "%1"=="dirty" set tidy=false
 
+set fillImage=true
+if "%1"=="no-fill" set fillImage=false
+if "%1"=="no-expand" set fillImage=false
+if "%1"=="small" set fillImage=false
+
 echo ======================================================
 echo ===           STARTING BUILD PROCESS               ===
 echo ======================================================
@@ -146,10 +151,12 @@ echo.
 :: Wait a little bit, so that the delete does not fail
 ping localhost -n 1 > nul
 
-echo Adjusting file size of image
-tools\FAT_RootDir_Creator.exe -i "output\TONY.IMG" -fill 1474560
-if not exist "output\TONY.IMG" goto THROW_ERROR
-echo.
+if !fillImage!==true (
+	echo Adjusting file size of image
+	tools\FAT_RootDir_Creator.exe -i "output\TONY.IMG" -fill 1474560
+	if not exist "output\TONY.IMG" goto THROW_ERROR
+	echo.
+)
 
 :: Wait a little bit, so that the delete does not fail
 ping localhost -n 2 > nul
