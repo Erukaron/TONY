@@ -62,15 +62,39 @@ for %%f in (*.ASM) do (
 )
 echo.
 
-:: Adjust filesize for binary files
-for %%f in (..\bin\*.*) do (
-	echo Adjusting file size for binary: %%f
-	..\tools\FAT_RootDir_Creator.exe -fill next -fill-byte 0 -i "%%f"
+:: Go back to home dir
+cd ..
+
+:: Add every file to variable and copy each file to image file
+echo Adding file to image: bin\BOOT.BIN
+echo Adding file to image: bin\FAT.BIN
+echo Adding file to image: bin\FAT.BIN
+echo Adding file to image: bin\ROOTDIR.BIN
+echo Adding file to image: bin\KERNEL.SYS
+set copyArgs="bin\BOOT.BIN" + "bin\FAT.BIN" + "bin\FAT.BIN" + "bin\ROOTDIR.BIN" + "bin\KERNEL.SYS"
+echo.
+
+:: Add every file to variable and pass var to rootdir creator with -i kernel as first entry
+echo Adding file to root directory: bin\KERNEL.SYS
+set rootDirArgs=-i "bin\KERNEL.SYS"
+for %%f in (bin\*.*) do (
+	if not "%%f" == "bin\BOOT.BIN" (
+	if not "%%f" == "bin\KERNEL.SYS" (
+		echo Adding file to root directory: %%f
+		set rootDirArgs=!rootDirArgs! -i "%%f"
+	))
 )
 echo.
 
-:: Go back to home dir
-cd ..
+:: Add files to image copy string
+for %%f in (bin\*.*) do (
+	if not "%%f" == "bin\BOOT.BIN" (
+	if not "%%f" == "bin\KERNEL.SYS" (
+		echo Adding file to image: %%f
+		set copyArgs=!copyArgs! + "%%f"
+	))
+)
+echo.
 
 :: Copy text files
 echo Create working copies of static files
@@ -83,35 +107,31 @@ copy files\*.MAP tmpfiles\bin /Y
 copy files\*.BIN tmpfiles\bin /Y
 echo.
 
-:: Adjust filesize for text files
+:: Add txt files to root dir
 for %%f in (tmpfiles\txt\*.*) do (
-	echo Adjusting file size for static file: %%f
-	tools\FAT_RootDir_Creator.exe -fill next -fill-byte 32 -fill-last-byte 0 -i "%%f"
+	echo Adding file to root directory: %%f
+	set rootDirArgs=!rootDirArgs! -i "%%f"
 )
+echo.
 
-:: Adjust filesize for binary files
+:: Add files to image copy string
+for %%f in (tmpfiles\txt\*.*) do (
+	echo Adding file to image: bin\%%~nxf
+	set copyArgs=!copyArgs! + "bin\%%~nxf"
+)
+echo.
+
+:: Add bin files to root dir
 for %%f in (tmpfiles\bin\*.*) do (
-	echo Adjusting file size for static file: %%f
-	tools\FAT_RootDir_Creator.exe -fill next -fill-byte 0 -i "%%f"
+	echo Adding file to root directory: %%f
+	set rootDirArgs=!rootDirArgs! -i "%%f"
 )
 echo.
 
-echo Moving adjusted static files to bin directory
-copy tmpfiles\txt\*.* bin
-copy tmpfiles\bin\*.* bin
-echo.
-
-:: Add every file to variable and pass var to rootdir creator with -i kernel as first entry
-echo Adding file to root directory: bin\KERNEL.SYS
-set rootDirArgs=-i "bin\KERNEL.SYS"
-for %%f in (bin\*.*) do (
-	if not "%%f" == "bin\BOOT.BIN" (
-	if not "%%f" == "bin\KERNEL.SYS" (
-	if not "%%f" == "bin\ROOTDIR.BIN" (
-	if not "%%f" == "bin\FAT.BIN" (
-		echo Adding file to root directory: %%f
-		set rootDirArgs=!rootDirArgs! -i "%%f"
-	))))
+:: Add files to image copy string
+for %%f in (tmpfiles\bin\*.*) do (
+	echo Adding file to image: bin\%%~nxf
+	set copyArgs=!copyArgs! + "bin\%%~nxf"
 )
 echo.
 
@@ -125,27 +145,34 @@ nasm build\rootdir.asm -f bin -o bin\ROOTDIR.BIN
 if not exist bin\ROOTDIR.BIN goto THROW_ERROR
 echo.
 
-
-:: Add every file to variable and copy each file to image file
-echo Adding file to image: bin\BOOT.BIN
-echo Adding file to image: bin\FAT.BIN
-echo Adding file to image: bin\FAT.BIN
-echo Adding file to image: bin\ROOTDIR.BIN
-echo Adding file to image: bin\KERNEL.SYS
-set copyArgs="bin\BOOT.BIN" + "bin\FAT.BIN" + "bin\FAT.BIN" + "bin\ROOTDIR.BIN" + "bin\KERNEL.SYS"
+:: Adjust file sizes AFTER the root dir was built
+:: Adjust filesize for binary files -> They need to be terminated at a multiple of 512 to be loaded correctly
 for %%f in (bin\*.*) do (
-	if not "%%f" == "bin\BOOT.BIN" (
-	if not "%%f" == "bin\FAT.BIN" (
-	if not "%%f" == "bin\ROOTDIR.BIN" (
-	if not "%%f" == "bin\KERNEL.SYS" (
-		echo Adding file to image: %%f
-		set copyArgs=!copyArgs! + "%%f"
-	))))
+	echo Adjusting file size for binary: %%f
+	tools\FAT_RootDir_Creator.exe -fill next -fill-byte 0 -i "%%f"
 )
 echo.
 
+:: Adjust filesize for text files -> They need to be terminated at a multiple of 512 to be loaded correctly
+for %%f in (tmpfiles\txt\*.*) do (
+	echo Adjusting file size for static file: %%f
+	tools\FAT_RootDir_Creator.exe -fill next -fill-byte 32 -fill-last-byte 0 -i "%%f"
+)
+
+:: Adjust filesize for binary files -> They need to be terminated at a multiple of 512 to be loaded correctly
+for %%f in (tmpfiles\bin\*.*) do (
+	echo Adjusting file size for static file: %%f
+	tools\FAT_RootDir_Creator.exe -fill next -fill-byte 0 -i "%%f"
+)
+echo.
+
+echo Moving adjusted static files to bin directory
+copy tmpfiles\txt\*.* bin
+copy tmpfiles\bin\*.* bin
+echo.
+
 echo Building image
-copy /b %copyArgs% "output\TONY.IMG"
+copy /b !copyArgs! "output\TONY.IMG"
 echo.
 
 :: Wait a little bit, so that the delete does not fail

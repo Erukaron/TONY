@@ -75,6 +75,7 @@ kernel_setup:
 
     ; timer needs to be initialized first
     call install_timer
+    call install_math
     call install_display
     call install_sound
     call install_keyboard
@@ -89,7 +90,7 @@ kernel_setup:
     call kernel_install_interrupt
 
     ; adjust kernel settings
-    ;call process_config_file
+    call process_config_file
 
     ; read keyboard file
     mov si, keymap_file
@@ -173,6 +174,13 @@ install_timer:
 
     mov al, 0x82
     mov bx, timer_sleep_seconds
+    call kernel_install_interrupt
+
+    ret
+
+install_math:
+    mov al, 0x8e
+    mov bx, math_32_bit_operation
     call kernel_install_interrupt
 
     ret
@@ -270,7 +278,7 @@ install_fat:
     call kernel_install_interrupt
 
     mov al, 0xc5
-    mov bx, fat_read_next_bytes
+    mov bx, fat_read_next_string
     call kernel_install_interrupt
 
     mov al, 0xc6
@@ -514,7 +522,16 @@ process_config_file:
     int 0xc2 ; Open file
     push bp
     push bx
-        xchg bx, bx
+        .loop:
+            mov di, .str
+            push cs
+            pop es
+            mov cx, 10
+            mov ah, 1
+            int 0xc5
+
+
+            
 
         ; Build string 
 
@@ -528,6 +545,7 @@ process_config_file:
 
     .config_kbrd_ident db "KBRD_MAP=", 0
     .config_shell_ident db "SHELL=", 0
+    .str times 0x1000 db 0
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
@@ -579,6 +597,7 @@ _kernel_test_gfx:
 ;-------------------------------------------------------------------------------
 %include "KRNLTMER.INC"
 %include "KRNLSND.INC"
+%include "KRNLMATH.INC"
 %include "KRNLDISP.INC"
 %include "KRNLKBRD.INC"
 %include "KRNLMEM.INC"

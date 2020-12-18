@@ -1,6 +1,7 @@
 -------------------------------------------------
 0x80 - 0x87: timer
-0x88 - 0x8f: sound
+0x88 - 0x8d: sound
+0x8e - 0x8f: math
 0x90 - 0xaf: display
 0xb0 - 0xb7: keyboard
 0xb8 - 0xbf: memory
@@ -38,6 +39,27 @@
 
     output:
         none
+-------------------------------------------------
+
+
+
+
+
+-------------------------------------------------
+0x8e
+    Performs a 32-bit mathematical operation
+    input: 
+        BP -> Operation 
+            0: Addition
+            1: Subtraction
+        DX:AX -> Number 1
+        CX:BX -> Number 2
+    output:
+        AX:DX -> Result 
+        BP -> Error 
+            0x0000: No error
+            0x0001: Overflow
+            0xffff: Operation not specified
 -------------------------------------------------
 
 
@@ -161,6 +183,7 @@
         ds:si -> filename
     output:
         ax -> file size in sectors (-1 if non existant)
+        dx:bx -> file size in bytes (-1 if non existant)
 -------------------------------------------------
 0xc2
     Open (or create) file
@@ -182,15 +205,27 @@
         bp:bx -> Address of file handle
     output:
         dl -> Read byte
+        dh -> Error code
+            0x00: no error
+            0x01: end of file reached
+            0x02: error while reading next sector
+            0x80: unknown error
 -------------------------------------------------
 0xc5
-    Read next bytes
+    Read next string
     input: 
         bp:bx -> Address of file handle
-        cx -> Number of bytes to read
         es:di -> Address to write the bytes to
+        al -> function
+            0: read string to zero termination
+            1: read string to line break
+        cx -> Max string length
     output:
-        none
+        es:di -> Zero terminated string
+        cx -> Zero, if no space left
+        dh -> Error code
+            0x00: no error
+            0x01: end of file reached
 -------------------------------------------------
 0xc6
     Write next byte

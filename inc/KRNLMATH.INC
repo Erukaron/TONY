@@ -23,64 +23,84 @@
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
-; Common definitions for various files
-;-------------------------------------------------------------------------------
-%ifndef __COMMON_INC__INCLUDED__
-%define __COMMON_INC__INCLUDED__
+; TONY Kernel math module
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
-; Segments
-;-------------------------------------------------------------------------------
-INTERRUPT_SEGMENT           equ 0x0000
-INTERRUPT_OFFSET            equ 0x0000
-ROOT_SEGMENT                equ 0x0000
-ROOT_OFFSET                 equ 0x0600
-FAT_SEGMENT                 equ 0x0000
-FAT_OFFSET                  equ 0x2200
-BOOT_SEGMENT                equ 0x07c0
-BOOT_OFFSET                 equ 0x0000
-KERNEL_SEGMENT              equ 0x0000
-KERNEL_OFFSET               equ 0x3400
-STACK_SEGMENT               equ 0x1000
-STACK_OFFSET                equ 0x0000
-COLORDISPLAY_TEXT_SEGMENT   equ 0xb800
-COLORDISPLAY_TEXT_OFFSET    equ 0x0000
-COLORDISPLAY_GFX_SEGMENT    equ 0xa000
-COLORDISPLAY_GFX_OFFSET     equ 0x0000
+; Constants
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
-; BIOS modes
+
 ;-------------------------------------------------------------------------------
-VIDEOMODE_BIOS_ASCII_COLOR_80x25 equ 0x03
-VIDEOMODE_BIOS_GFX_320_200_COLOR equ 0x13
+; Variables
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
-; Video mode
-;-------------------------------------------------------------------------------
-VIDEOMODE_ASCII_COLOR_80x25 equ 0
-VIDEOMODE_GFX_320_200_COLOR equ 1
-;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
-; Miscellanious
+; Performs a 32-bit mathematical operation
+;
+; input: 
+;   BP -> Operation 
+;       0: Addition
+;       1: Subtraction
+;   DX:AX -> Number 1
+;   CX:BX -> Number 2
+;
+; output:
+;   AX:DX -> Result 
+;   BP -> Error 
+;       0x0000: No error
+;       0x0001: Overflow
+;       0xffff: Operation not specified
 ;-------------------------------------------------------------------------------
-FALSE equ 0
-TRUE  equ 1
-EOF   equ 1
-;-------------------------------------------------------------------------------
+math_32_bit_operation:
+    push bx
+    push cx
 
-;-------------------------------------------------------------------------------
-; ASCII
-;-------------------------------------------------------------------------------
-BACKSPACE  equ 0x08
-LINEFEED   equ 0x0a
-RETURN     equ 0x0d
-SPACE      equ 0x20
-;-------------------------------------------------------------------------------
+    cmp bp, 0
+    jz .addition
+    cmp bp, 1
+    jz .subtraction
+    jmp .error
 
-;-------------------------------------------------------------------------------
-%endif ;__COMMON_INC__INCLUDED__
+    .addition:
+        mov bp, 0 ; No error
+
+        add ax, bx
+        jnc .add_no_overflow
+            inc dx
+
+        .add_no_overflow:
+        add dx, cx
+
+        jnc .done
+
+        mov bp, 1 ; On overflow
+        jmp .done
+
+    .subtraction:
+        mov bp, 0 ; No error
+
+        sub ax, bx
+        jnc .sub_no_overflow
+            dec dx
+
+        .sub_no_overflow:
+        sub dx, cx
+
+        jnc .done
+
+        mov bp, 1 ; On overflow
+        jmp .done
+
+    .error:
+        mov bp, 0xffff
+        jmp .done
+
+    .done: 
+        pop cx
+        pop bx
+        iret
 ;-------------------------------------------------------------------------------

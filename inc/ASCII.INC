@@ -33,6 +33,7 @@ ASCII_TAB                  equ 0x09
 ASCII_LF                   equ 0x0a
 ASCII_CR                   equ 0x0d
 ASCII_CRLF                 equ 0x0a0d
+ASCII_LFCR                 equ 0x0d0a
 ASCII_ESC                  equ 0x1b
 
 ASCII_FIRST_PRINTABLE_CHAR equ 0x20

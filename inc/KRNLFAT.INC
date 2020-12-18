@@ -37,10 +37,11 @@ FAT_READ_RETRIES            equ 8
 FAT_DISK_OPERATION_IDENT    equ '.'
 FAT_FILE_HANDLE_SIZE        equ 32
 
-FAT_FILE_HANDLE_OFFSET_CURSOR       equ 0x0b
-FAT_FILE_HANDLE_OFFSET_FILE_SIZE    equ 0x0f
-FAT_FILE_HANDLE_OFFSET_SEGMENT      equ 0x11
-FAT_FILE_HANDLE_OFFSET_OFFSET       equ 0x13
+FAT_FILE_HANDLE_OFFSET_CURSOR               equ 0x0b
+FAT_FILE_HANDLE_OFFSET_FILE_SIZE_CLUSTER    equ 0x0f
+FAT_FILE_HANDLE_OFFSET_SEGMENT              equ 0x11
+FAT_FILE_HANDLE_OFFSET_OFFSET               equ 0x13
+FAT_FILE_HANDLE_OFFSET_FILE_SIZE_BYTES      equ 0x15
 
 FAT_ROOTDIR_OFFSET_START_CLUSTER    equ 0x1a
 
@@ -568,6 +569,7 @@ fat_read_device:
 ;
 ; output:
 ;    ax -> file size in sectors (-1, if file does not exist)
+;    dx:bx -> file size in bytes (-1 if non existant)
 ;-------------------------------------------------------------------------------
 fat_get_file_size:
     pusha
@@ -600,10 +602,10 @@ fat_get_file_size:
     .extract_size:
         push word ROOT_SEGMENT
         pop es
-        mov dx, word [es:di + 0x001c] ; es:di points to start of root dir entry of the file (+28 for file size) ; Low word
-        mov bx, word [es:di + 0x001e] ; second half of file size in bytes (+30) ; High word
-        mov [cs:.file_size_bytes], bx
-        mov [cs:.file_size_bytes + 2], dx
+        mov bx, word [es:di + 0x001c] ; es:di points to start of root dir entry of the file (+28 for file size) ; Low word
+        mov dx, word [es:di + 0x001e] ; second half of file size in bytes (+30) ; High word
+        mov [cs:.file_size_bytes], dx
+        mov [cs:.file_size_bytes + 2], bx
 
     ; Divide File size by bytes per sector
     ; Max file size: max(AX)*bytes_per_sector = 0xffff*512 = 31GiB
@@ -646,6 +648,8 @@ fat_get_file_size:
         pop ds
         popa
         mov ax, [cs:.file_size_sectors]
+        mov dx, [cs:.file_size_bytes]
+        mov bx, [cs:.file_size_bytes + 2]
         iret
 
     .file_size_bytes dd 0 ; 4 byte file size
@@ -663,11 +667,13 @@ fat_get_file_size:
 ;-------------------------------------------------------------------------------
 ; File handle:
 ; 0x00 (11 Bytes) File name in fat format
-; 0x0b (4 Bytes) Current cursor position in file
-; 0x0f (2 Bytes) Current file size in clusters (updated on each write)
-; 0x11 (2 Bytes) Segment of loaded file
-; 0x13 (2 Bytes) Offset of loaded file
-; 0x15 (9 Bytes) Unused
+; 0x0b (2 Bytes) Current cursor position in file (current sector)
+; 0x0d (2 Bytes) Current cursor position in file (current byte in sector)
+; 0x0f (2 Bytes) Current file size in clusters (updated on each write -> FAT clusters)
+; 0x11 (2 Bytes) Segment of loaded file (where in memory is the file located?)
+; 0x13 (2 Bytes) Offset of loaded file (where in memory is the file located?)
+; 0x15 (4 Bytes) Current file size in bytes (updated each write -> bytes of raw data on the drive)
+; 0x15 (7 Bytes) Unused
 ;-------------------------------------------------------------------------------
 fat_open:
     push ds
@@ -710,7 +716,7 @@ fat_open:
         mov cx, FAT_IDENT_LENGTH
         rep movsb
 
-        ; set cursor position to 0
+        ; set current cursor position to 0 (sector and in sector position)
         mov ax, 0
         stosw
         stosw
@@ -720,7 +726,10 @@ fat_open:
     pop ds
     push ds
     push si
-    int 0xc1 ; Get file size
+
+    push bx ; save address offset
+
+    int 0xc1 ; Get file size in clusters
     cmp ax, -1
     jne .file_exists 
         ; Current file size in cluster is 1 
@@ -732,8 +741,22 @@ fat_open:
     .file_exists:
         ; if file exists, write file size to file handle
         stosw
+        
+        push es
+        push di
+            ; Write byte size to file handle
+            push word [cs:.handle_segment]
+            pop es
+            push word [cs:.handle_offset]
+            pop di
+
+            mov [es:di + FAT_FILE_HANDLE_OFFSET_FILE_SIZE_BYTES], dx
+            mov [es:di + FAT_FILE_HANDLE_OFFSET_FILE_SIZE_BYTES + 2], bx
+        pop di
+        pop es
 
     .allocate_file_address:
+        pop bx ; address offset ; see above ont 0xc1
         mov ax, [cs:bpbBytesPerSector]
         int 0xb8 ; Allocate one sector
         cmp dx, 0xffff
@@ -862,79 +885,200 @@ fat_close:
 ;
 ; output:
 ;   dl -> Read byte
+;   dh -> Error code
+;       0x00: no error
+;       0x01: end of file reached
+;       0x02: error while reading next sector
+;       0x80: unknown error
 ;-------------------------------------------------------------------------------
 fat_read_next_byte:
-    push ds
-    push si
-    push ax
-    push dx
-
-    xchg bx, bx
-    push cs
-    pop ds
-    mov si, NOT_IMPLEMENTED
-    int 0x91
-    cli 
-    hlt
-    .hang:
-    nop
-    jmp .hang
-
     ; Check if next byte is inside the size of the file
+    mov dh, 0x80
 
-    ;push word [bp:bx + FAT_FILE_HANDLE_OFFSET_SEGMENT]
-    ;pop ds
-    ;push word [bp:bx + FAT_FILE_HANDLE_OFFSET_OFFSET]
-    ;pop si
+    push es
+    push ax
+    push cx
+    push si
+    push ds
+        push bp
+        pop es
 
-    ;mov ax, [bp:bx + FAT_FILE_HANDLE_OFFSET_CURSOR]
-    ;mov dx, [bp:bx + FAT_FILE_HANDLE_OFFSET_CURSOR + 2]
-    ; Next byte is at ax:dx
+        push word [es:bx + FAT_FILE_HANDLE_OFFSET_SEGMENT]
+        pop ds
+        push word [es:bx + FAT_FILE_HANDLE_OFFSET_OFFSET]
+        pop si
 
-    ; Check if loaded sector contains file byte offset ax:dx
-        ; If not, load required sector
-    ; Read byte into dl
+        .check_eof:
+            mov [cs:.eof_reached_flag], byte 0 ; 0 = eof reached, 1 = eof not reached
+            pusha
+                mov ax, [es:bx + FAT_FILE_HANDLE_OFFSET_CURSOR] ; sector
+                mov cx, [cs:bpbBytesPerSector]
+                mul cx
+                add ax, [es:bx + FAT_FILE_HANDLE_OFFSET_CURSOR + 2] ; offset in sector
 
-    ; Update cursor
-    inc dx
-    jnc .no_inc_32_bit
-    inc ax
-    .no_inc_32_bit:
+                cmp [es:bx + FAT_FILE_HANDLE_OFFSET_FILE_SIZE_BYTES], dx ; upper 16 bit
+                jb .eof_reached
+                cmp [es:bx + FAT_FILE_HANDLE_OFFSET_FILE_SIZE_BYTES + 2], ax ; lower 16 bit
+                jb .eof_reached
 
-    ;mov [bp:bx + FAT_FILE_HANDLE_OFFSET_CURSOR], ax
-    ;mov [bp:bx + FAT_FILE_HANDLE_OFFSET_CURSOR + 2], dx
+                mov [cs:.eof_reached_flag], byte 1 ; 0 = eof reached, 1 = eof not reached
+                
+                .eof_reached: ; [cs:.eof_reached_flag] is 0, if eof is reached
+            popa
 
-    pop dx
-    pop ax
-    pop si
-    pop ds
+            cmp [cs:.eof_reached_flag], byte 1
+            je .no_eof
+                mov dh, 0x01 ; set eof error code
+                mov dl, 0
+                jmp .done
 
-    iret
+            .no_eof:
+
+        ; Next byte pointer is at sector dx, byte offset ax
+        mov dx, [es:bx + FAT_FILE_HANDLE_OFFSET_CURSOR]
+        mov ax, [es:bx + FAT_FILE_HANDLE_OFFSET_CURSOR + 2]
+
+        cmp [cs:bpbBytesPerSector], ax
+        ja .sector_ok
+            ; Load next sector into memory
+            inc dx
+
+            ; Read file to address
+            ; Get filename and store it again
+            push es
+            push ds
+            pusha
+                call fat_load_root_directory
+                ;   ax -> Start sector 
+                ;   cx -> Sector count (0xffff to read the complete file)
+                ;   es:si -> Filename to load
+                ;   bx:bp -> Buffer to load file to
+                ;
+                ; output:
+                ;   carry -> on error
+                ;   cx -> Number of loaded sectors
+                mov ax, dx
+                mov cx, 1
+                ; First 11 bytes of handler are file name in 83 notation
+                ; File buffer is at ds:si needs to be at bx:bp
+                ; File name is at bp:bx needs to be at es:si
+                push ds
+                    push si
+                        push bp
+                            push bx
+                            pop si
+                        pop es
+                    pop bp
+                pop bx
+                call fat_inc_load_file
+            popa
+            pop ds
+            pop es
+            jc .error_reading_file
+
+            mov ax, 0 ; Zero byte offset for current sector
+
+        .sector_ok:
+            add si, ax
+            add ax, 1 ; new offset in sector
+
+        .update_cursor:
+            mov [es:bx + FAT_FILE_HANDLE_OFFSET_CURSOR], dx ; (new) sector
+            mov [es:bx + FAT_FILE_HANDLE_OFFSET_CURSOR + 2], ax ; new offset in sector
+
+        .read_byte:
+            mov dl, [ds:si]
+            mov dh, 0 ; No error
+            jmp .done
+
+        .error_reading_file:
+            mov dh, 0x02 ; error while reading next sector
+            jmp .done
+
+        .done:
+            pop ds
+            pop si
+            pop cx
+            pop ax
+            pop es
+            iret
+
+    .eof_reached_flag db 0
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
-; Read next bytes
+; Read next string
 ;
 ; input: 
 ;   bp:bx -> Address of file handle
-;   cx -> Number of bytes to read
 ;   es:di -> Address to write the bytes to
+;   ah -> Function
+;       0: read string to zero termination
+;       1: read string to line break
+;   cx -> Max string length
 ;
 ; output:
-;   none
+;   es:di -> Zero terminated string
+;   cx -> Zero, if no space left
+;   dh -> Error code
+;       0x00: no error
+;       0x01: end of file reached
+;       0xff: Function (AX) not supported!
 ;-------------------------------------------------------------------------------
-fat_read_next_bytes:
-    xchg bx, bx
-    push cs
-    pop ds
-    mov si, NOT_IMPLEMENTED
-    int 0x91
-    cli 
-    hlt
-    .hang:
-    nop
-    jmp .hang
-    iret
+fat_read_next_string:
+    push di
+    push ax
+
+    mov dh, 0xff
+
+    cmp al, 1
+    ja .done ; Option not supported
+
+    mov dh, 0
+
+    dec cx ; remove one interation for zero termination
+
+    .build_str:
+        int 0xc4
+
+        cmp dh, EOF
+        jz .done
+
+        mov al, dl
+        stosb
+
+        cmp ah, 0
+        jz .check_zero
+
+        cmp ah, 1
+        jz .check_crlf
+
+        loop .build_str
+    jmp .done
+
+    .check_zero:
+        cmp [es:di - 1], byte 0
+        jz .done
+        loop .build_str
+    jmp .done
+
+    .check_crlf:
+        cmp [es:di - 2], word ASCII_CRLF
+        jz .done
+        cmp [es:di - 2], word ASCII_LFCR
+        jz .done
+        loop .build_str
+    jmp .done
+
+    .done:
+        ; Zero termination
+        mov al, 0
+        stosb 
+
+        pop ax
+        pop di
+
+        iret
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
