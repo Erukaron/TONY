@@ -42,6 +42,7 @@ FAT_FILE_HANDLE_OFFSET_FILE_SIZE_CLUSTER    equ 0x0f
 FAT_FILE_HANDLE_OFFSET_SEGMENT              equ 0x11
 FAT_FILE_HANDLE_OFFSET_OFFSET               equ 0x13
 FAT_FILE_HANDLE_OFFSET_FILE_SIZE_BYTES      equ 0x15
+FAT_FILE_HANDLE_OFFSET_FLAGS                equ 0x16
 
 FAT_ROOTDIR_OFFSET_START_CLUSTER    equ 0x1a
 
@@ -517,9 +518,73 @@ fat_search_file:
 ;   carry -> On error
 ;-------------------------------------------------------------------------------
 fat_read_device:
+    push di
+
+    .next_sector:
+        mov di, FAT_READ_RETRIES ; retries for error
+
+        .try_load:
+            push ax
+            push bx
+            push cx
+
+            push bx
+                mov bl, dl ; remember device
+                mov dx, ax
+
+                int 0xe2 ; Convert lba to chs
+
+                mov dl, bl
+            pop bx
+
+            mov ah, 0x02 ; Read device es:bx
+            mov al, 0x01 ; Number of sectors to read
+            int 0x13
+            jnc .done ; test if succeeded
+
+            xor ax, ax ; Reset disk
+            int 0x13
+            dec di ; decrement error counter
+            pop cx
+            pop bx
+            pop ax
+            jnz .try_load ; attempt to read again
+
+            pop di
+            stc
+            ret
+
+    .done:
+        int 0xcf ; Feedback disk operation
+
+        pop cx
+        pop bx
+        pop ax
+        add bx, word [cs:bpbBytesPerSector] ; next sector
+        inc ax ; read next sector
+        loop .next_sector ; repeat until cx sectors are read
+        pop di
+        clc
+        ret
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Writes to the device specified
+;
+; input: 
+;   dl -> device
+;   es:bx -> Buffer to write from
+;   ax -> Start sector (LBA)
+;   cx -> Number of sectors
+;
+; output:
+;   carry -> On error
+;-------------------------------------------------------------------------------
+fat_write_device:
+    push di
     mov di, FAT_READ_RETRIES ; retries for error
 
-    .try_load:
+    .try_write:
         push ax
         push bx
         push cx
@@ -533,8 +598,8 @@ fat_read_device:
             mov dl, bl
         pop bx
 
-        mov ah, 0x02 ; Read device es:bx
-        mov al, 0x01 ; Number of sectors to read
+        mov ah, 0x03 ; Write device es:bx
+        mov al, 0x01 ; Number of sectors to write
         int 0x13
         jnc .done ; test if succeeded
 
@@ -544,8 +609,9 @@ fat_read_device:
         pop cx
         pop bx
         pop ax
-        jnz .try_load ; attempt to read again
+        jnz .try_write ; attempt to read again
 
+        pop di
         stc
         ret
 
@@ -558,6 +624,8 @@ fat_read_device:
         add bx, word [cs:bpbBytesPerSector] ; next sector
         inc ax ; read next sector
         loop fat_read_device ; repeat until cx sectors are read
+        pop di
+        clc 
         ret
 ;-------------------------------------------------------------------------------
 
@@ -673,7 +741,10 @@ fat_get_file_size:
 ; 0x11 (2 Bytes) Segment of loaded file (where in memory is the file located?)
 ; 0x13 (2 Bytes) Offset of loaded file (where in memory is the file located?)
 ; 0x15 (4 Bytes) Current file size in bytes (updated each write -> bytes of raw data on the drive)
-; 0x15 (7 Bytes) Unused
+; 0x19 (1 Bytes) File flags 
+;                Bit 0: 0 -> File already exists
+;                       1 -> File created upon open command
+; 0x1a (6 Bytes) Unused
 ;-------------------------------------------------------------------------------
 fat_open:
     push ds
@@ -735,8 +806,24 @@ fat_open:
         ; Current file size in cluster is 1 
         mov ax, 1
         stosw
+
+        push es
+        push di
+            ; Write byte size to file handle
+            push word [cs:.handle_segment]
+            pop es
+            push word [cs:.handle_offset]
+            pop di
+
+            mov word [es:di + FAT_FILE_HANDLE_OFFSET_FILE_SIZE_BYTES], 0 ; new file
+            mov word [es:di + FAT_FILE_HANDLE_OFFSET_FILE_SIZE_BYTES + 2], 0 ; -> 0 bytes
+
+            or byte [es:di + FAT_FILE_HANDLE_OFFSET_FLAGS], 0b1 ; set new file flag
+        pop di
+        pop es
+
         ; Create file in fat and root dir
-    jmp .not_impl
+        jmp .not_impl
     jmp .allocate_file_address
     .file_exists:
         ; if file exists, write file size to file handle
@@ -752,6 +839,8 @@ fat_open:
 
             mov [es:di + FAT_FILE_HANDLE_OFFSET_FILE_SIZE_BYTES], dx
             mov [es:di + FAT_FILE_HANDLE_OFFSET_FILE_SIZE_BYTES + 2], bx
+
+            and byte [es:di + FAT_FILE_HANDLE_OFFSET_FLAGS], 0b11111110 ; set existing file flag -> Set zero to bit 0
         pop di
         pop es
 
@@ -1007,11 +1096,11 @@ fat_read_next_byte:
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
-; Read next string
+; Read next string 
 ;
 ; input: 
 ;   bp:bx -> Address of file handle
-;   es:di -> Address to write the bytes to
+;   es:di -> Address to write the bytes to (zero terminated)
 ;   ah -> Function
 ;       0: read string to zero termination
 ;       1: read string to line break
@@ -1031,12 +1120,12 @@ fat_read_next_string:
 
     mov dh, 0xff
 
-    cmp al, 1
+    cmp ah, 1
     ja .done ; Option not supported
 
     mov dh, 0
 
-    dec cx ; remove one interation for zero termination
+    dec cx ; remove one iteration for zero termination
 
     .build_str:
         int 0xc4
@@ -1063,6 +1152,9 @@ fat_read_next_string:
     jmp .done
 
     .check_crlf:
+        cmp di, 2 ; there need to be at least 2 bytes
+        jb .build_str
+
         cmp [es:di - 2], word ASCII_CRLF
         jz .done
         cmp [es:di - 2], word ASCII_LFCR
@@ -1089,9 +1181,30 @@ fat_read_next_string:
 ;   dl -> Byte to write
 ;
 ; output:
-;   none
+;   dl -> Error code
+;       0x00: no error
 ;-------------------------------------------------------------------------------
 fat_write_next_byte:
+    ; Writing process:
+    ; 1) Check if file exists (Create flag in file handle, set upon open)
+    ;   1a) file exists: Get first cluster from root directory
+    ;   1b) file does not exist:
+    ;       1b.1) Check root dir for enough space (exit if not)
+    ;       1b.2) Check fat for enough space (exit if not)
+    ;       1b.3) Get first free cluster in fat
+    ;       1b.4) Write file information from file handle to root directory (name and flags)
+    ; 2) Current file pointer at sector bound
+    ;   2a) yes: 
+    ;       2a.1) Check if enough space (exit if not)
+    ;       2a.2) Zero size of one sector in memory
+    ;       2a.3) Link new cluster to old cluster in fat
+    ;       2a.4) Terminate file in fat
+    ;       2a.5) Write fat
+    ;   2b) no: Read sector including current byte position into memory
+    ; 3) Add dl to file pointer in memory
+    ; 4) Increase file size in file handle
+    ; 5) Write sector in memory to disk
+    ; 6) Write file information from file handle to root directory (size)
     xchg bx, bx
     push cs
     pop ds

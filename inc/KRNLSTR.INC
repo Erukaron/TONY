@@ -89,7 +89,7 @@ str_init:
 ; Checks if a string contains another string
 ;
 ; input:
-;   ah -> 0 contains substring, not 0 are strings equal
+;   ah -> 0 contains substring, 1 are strings equal
 ;   ds:si -> String to be checked
 ;   es:di -> Check string
 ;
@@ -99,7 +99,8 @@ str_init:
 ;-------------------------------------------------------------------------------
 str_contains:
     pusha
-    pushf
+    push es
+    ; !! If adding pushes -> See .no_contain and .contains -> Changing values in stack
 
     mov [cs:.equal_check], ah
 
@@ -125,8 +126,8 @@ str_contains:
 
     .skip_si_restore_di:
         ; check if strings need to be equal, if so leave -> if the program reaches here, the strings are unequal
-        cmp byte [cs:.equal_check], 0
-        jne .no_contain
+        cmp byte [cs:.equal_check], 1
+        jz .no_contain
 
         mov di, bx
         inc si
@@ -138,17 +139,27 @@ str_contains:
         jmp .no_contain
 
     .no_contain:
-        stc
+        ; set carry in stack
+        push ss
+        pop es
+        mov di, sp
+        or word [es:di + 2 + 14 + 6], 1 ; 2 for push es 14 for pusha 6 for offset to flags from int call
+
         xor ax, ax
         jmp .done
 
     .contains:
-        clc 
+        ; set no carry in stack
+        push ss
+        pop es
+        mov di, sp
+        and word [es:di + 2 + 14 + 6], 0xfffe ; 2 for push es 14 for pusha 6 for offset to flags from int call
+
         mov ax, si
         sub ax, dx ; get relative start address
 
     .done:
-        popf
+        pop es
         popa
         iret
 
@@ -275,6 +286,62 @@ str_split:
             popa
             popf
             iret  
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Removes all white space characters from a string (space, tab, cr and lf)
+;
+; input: 
+;   ds:si -> string to remove white space characters from
+;
+; output:
+;   ds:si -> removed white space characters
+;   cx -> Number of white spaces removed
+;-------------------------------------------------------------------------------
+str_remove_whitespace:
+    push ds
+    push si
+    xor cx, cx
+    cld
+
+    .loop:
+        cmp byte [ds:si], 0
+        jz .done
+
+        cmp byte [ds:si], ASCII_SP
+        jz .remove
+        cmp byte [ds:si], ASCII_TAB
+        jz .remove
+        cmp byte [ds:si], ASCII_LF
+        jz .remove
+        cmp byte [ds:si], ASCII_CR
+        jz .remove
+
+        inc si
+    jmp .loop
+
+    .remove:
+        inc cx
+        push si
+
+        ; shift every byte one position to the left, until zero termination is reached
+        .shift_bytes:
+            mov al, [ds:si + 1]
+            mov [ds:si], al
+            inc si
+
+            cmp al, 0 
+            jnz .shift_bytes
+
+        pop si
+
+        jmp .loop ; Return to loop
+
+
+    .done:
+        pop si
+        pop ds
+        iret
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------

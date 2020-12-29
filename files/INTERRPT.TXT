@@ -215,8 +215,8 @@
     Read next string
     input: 
         bp:bx -> Address of file handle
-        es:di -> Address to write the bytes to
-        al -> function
+        es:di -> Address to write the bytes to (zero terminated)
+        ah -> function
             0: read string to zero termination
             1: read string to line break
         cx -> Max string length
@@ -272,7 +272,7 @@
 0xd2
     Checks if a string contains another string
     input:
-        ah -> 0 contains substring, not 0 are strings equal
+        ah -> 0 contains substring, 1 are strings equal
         ds:si -> String to be checked
         es:di -> Check string
     output:
@@ -293,11 +293,22 @@
     First part of the string remains in ds:si (will be terminated), second part is split into es:di
     input: 
         ds:si -> String to split
-        ah -> 0 Split with termination of first string, 1 Split without termination of first string
+        es:di -> Buffer to second part
+        ah ->   0 Split with termination of first string 
+                1 Split without termination of first string
+                2 terminate second part
         al -> split character
         cx -> max split length
     output:
         es:di -> Buffer to second part
+-------------------------------------------------
+0xd5
+    Removes all white space characters from a string (space, tab, cr and lf)
+    input: 
+        ds:si -> string to remove white space characters from
+    output:
+        ds:si -> removed white space characters
+        cx -> Number of white spaces removed
 -------------------------------------------------
 
 -------------------------------------------------

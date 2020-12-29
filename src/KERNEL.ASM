@@ -46,9 +46,13 @@ PIC_EOI_MASK        equ 0x20
 ;-------------------------------------------------------------------------------
 bootdrive db 0
 time dw 0
-keymap_file db "KBRD_GER.MAP", 0
 kernel_config_file db "KERNEL.CFG", 0
-font_file db "FONT_3X5.BIN", 0
+;-------------------------------------------------------------------------------
+; !!! Vars need to have FAT_INPUT_LENGTH + zero terminator size
+;-------------------------------------------------------------------------------
+keymap_file db "KBRD_EN.MAP ", 0
+shell_file  db "            ", 0
+font_file   db "FONT_3X5.BIN", 0
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
@@ -94,10 +98,12 @@ kernel_setup:
 
     ; read keyboard file
     mov si, keymap_file
+    int 0x91
     call keyboard_update_keymap
 
     ; read font
     mov si, font_file
+    int 0x91
     call display_update_font
 
     ; check if gfx mode should be enabled
@@ -114,7 +120,7 @@ kernel_setup:
     int 0xf1 ; GFX Test
 
     ; Wait 5 seconds
-    mov ax, 5000
+    mov ax, 2000
     int 0x81
 
     int 0x95 ; cls
@@ -246,6 +252,8 @@ install_keyboard:
     ret
 
 install_memory:
+    call memory_initialize_all
+
     mov al, 0xb8
     mov bx, memory_allocate
     call kernel_install_interrupt
@@ -317,6 +325,10 @@ install_string:
 
     mov al, 0xd4
     mov bx, str_split
+    call kernel_install_interrupt
+
+    mov al, 0xd5
+    mov bx, str_remove_whitespace
     call kernel_install_interrupt
 
     ret
@@ -518,34 +530,172 @@ kernel_acknowledge_hardware_interrupt_slave:
 ;   none
 ;-------------------------------------------------------------------------------
 process_config_file:
+    push ds
+    push es
+
+    ; Create string for the ident
+    mov ax, .MAX_STR_LENGTH ; max length
+    int 0xb8
+    mov [cs:.str_segment], bx
+    mov [cs:.str_offset], dx
+
+    ; Create string for the parameter
+    mov ax, .MAX_STR_LENGTH ; max length
+    int 0xb8
+    mov [cs:.parameter_segment], bx
+    mov [cs:.parameter_offset], dx
+
     mov si, kernel_config_file
+    int 0xc1 ; Get file size
+    cmp ax, -1 ; file does not exist
+    jz .done
+
     int 0xc2 ; Open file
-    push bp
-    push bx
-        .loop:
-            mov di, .str
-            push cs
-            pop es
-            mov cx, 10
-            mov ah, 1
-            int 0xc5
+    mov [cs:.file_segment], bp
+    mov [cs:.file_offset], bx
+
+    .loop:
+        cmp byte [cs:.process_file], FALSE
+        jz .exit_loop
+
+        ; Read string from file into string 
+        mov bp, [cs:.file_segment]
+        mov bx, [cs:.file_offset]
+        push word [cs:.str_segment]
+        pop es
+        mov di, [cs:.str_offset]
+        mov ah, 1 ; read string to line break
+        mov cx, .MAX_STR_LENGTH
+        int 0xc5
+
+        cmp dh, 0x01 ; If not eof, skip setting precess_file to false
+        jnz .skip_set_exit_loop
+            mov byte [cs:.process_file], FALSE
+        .skip_set_exit_loop:
+
+        cmp dh, 0 ; Check if an error occured
+        jnz .skip_entry
+
+        ; alter string to ignore whitespace
+        push word [cs:.str_segment]
+        pop ds
+        mov si, [cs:.str_offset]
+        int 0xd5
+
+        ; Split string on = sign
+        mov ah, 0b10 ; termination of the first and second string
+        mov al, ASCII_EQUALS
+        mov cx, .MAX_STR_LENGTH
+        ; ds:si is already set
+        push word [cs:.parameter_segment]
+        pop es
+        mov di, [cs:.parameter_offset]
+        int 0xd4
+
+        ; Check for ident and set vars accordingly
+        ; Keyboard map
+        mov ah, 1 ; Check if equal
+        ; ds:si already set
+        push cs
+        pop es
+        mov di, .config_kbrd_ident
+        int 0xd2
+        jnc .set_keyboard_map ; set var, if equal
+
+        ; Shell file
+        mov ah, 1 ; Check if equal
+        ; ds:si already set
+        push cs
+        pop es
+        mov di, .config_shell_ident
+        int 0xd2
+        jnc .set_shell_file ; set var, if equal
+
+        ; Font file
+        mov ah, 1 ; Check if equal
+        ; ds:si already set
+        push cs
+        pop es
+        mov di, .config_font_ident
+        int 0xd2
+        jnc .set_font_file ; set var, if equal
+
+        .skip_entry: 
+            jmp .loop
+    .exit_loop:
 
 
-            
-
-        ; Build string 
-
-        ; Todo Adjust keymap file to file from kernel config
-        ; Todo Adjust font ; to file from kernel config
-    pop bx
-    pop bp
+    mov bp, [cs:.file_segment]
+    mov bx, [cs:.file_offset]
     int 0xc3 ; Close file
 
-    ret
+    .done:
+        ; Deallocate strings
+        mov ax, .MAX_STR_LENGTH ; max length
+        mov bx, [cs:.str_segment]
+        mov dx, [cs:.str_offset]
+        int 0xb9
 
-    .config_kbrd_ident db "KBRD_MAP=", 0
-    .config_shell_ident db "SHELL=", 0
-    .str times 0x1000 db 0
+        mov ax, .MAX_STR_LENGTH ; max length
+        mov bx, [cs:.parameter_segment]
+        mov dx, [cs:.parameter_offset]
+        int 0xb9
+
+        pop es
+        pop ds
+
+        ret
+
+    .set_keyboard_map:
+        push word [cs:.parameter_segment]
+        pop ds
+        mov si, [cs:.parameter_offset]
+        push cs
+        pop es
+        mov di, keymap_file
+        mov bx, 0 ; Start from begin of string
+        mov dx, FAT_INPUT_LENGTH ; Max file length
+        int 0xd3 ; Copy substring to string
+
+        jmp .loop
+
+    .set_shell_file:
+        push word [cs:.parameter_segment]
+        pop ds
+        mov si, [cs:.parameter_offset]
+        push cs
+        pop es
+        mov di, shell_file
+        mov bx, 0 ; Start from begin of string
+        mov dx, FAT_INPUT_LENGTH ; Max file length
+        int 0xd3 ; Copy substring to string
+
+        jmp .loop
+
+    .set_font_file:
+        push word [cs:.parameter_segment]
+        pop ds
+        mov si, [cs:.parameter_offset]
+        push cs
+        pop es
+        mov di, font_file
+        mov bx, 0 ; Start from begin of string
+        mov dx, FAT_INPUT_LENGTH ; Max file length
+        int 0xd3 ; Copy substring to string
+
+        jmp .loop 
+
+    .config_kbrd_ident db "KBRD_MAP", 0
+    .config_shell_ident db "SHELL", 0
+    .config_font_ident db "FONT", 0
+    .file_segment dw 0
+    .file_offset dw 0
+    .str_segment dw 0
+    .str_offset dw 0
+    .parameter_segment dw 0
+    .parameter_offset dw 0
+    .process_file db TRUE
+    .MAX_STR_LENGTH equ 128
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------

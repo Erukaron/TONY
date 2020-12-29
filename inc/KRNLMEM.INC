@@ -56,6 +56,44 @@ memory_master_map_end:
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
+; Initializes all memory
+;
+; input: 
+;   none
+;
+; output:
+;   none
+;-------------------------------------------------------------------------------
+memory_initialize_all:
+    push es
+    push di
+    push cx
+    push ax
+
+    mov ax, 0x2000
+
+    .loop:
+        mov es, ax
+
+        xor di, di
+
+        mov cx, 0xffff
+        .loop_init_segment:
+            mov [es:di], byte 0
+            inc di
+        loop .loop_init_segment
+
+        cmp ax, 0x8000
+        jae .loop
+
+    pop ax
+    pop cx
+    pop di
+    pop es
+    ret
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
 ; Reserves memory (in 16-byte units)
 ;
 ; input: 
