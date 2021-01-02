@@ -1,6 +1,51 @@
 -------------------------------------------------
+CPU exception interrupts:
+0x00        Divide by 0
+0x01        Single step (Debugger)
+0x02        Non Maskable Interrupt (NMI) Pin
+0x03        Breakpoint (Debugger)
+0x04        Overflow
+0x05        Bounds check
+0x06        Undefined Operation Code (OPCode) instruction 
+0x07        No coprocessor
+0x08        Double Fault
+0x09        Coprocessor Segment Overrun
+0x0a        Invalid Task State Segment (TSS)
+0x0b        Segment Not Present
+0x0c        Stack Segment Overrun
+0x0d        General Protection Fault (GPF)
+0x0e        Page Fault
+0x0f        Unassigned
+0x10        Coprocessor error
+0x11        Alignment Check (486+ Only)
+0x12        Machine Check (Pentium/586+ Only)
+0x13 - 0x1f Reserved exceptions
+-------------------------------------------------
+Hardware interrupts:
+0x08        Timer 
+0x09        Keyboard 
+0x0a        Cascade (never raised - internal use only)
+0x0b        COM 2 (if enabled)
+0x0c        COM 1 (if enabled)
+0x0d        LPT2 (if enabled)
+0x0e        Floppy disk
+0x0f        LPT1 - unreliable
+0x70        CMOS rtc
+0x71        Free
+0x72        Free
+0x73        Free
+0x74        PS2 Moudse
+0x75        FPU / Coprocessor
+0x76        Primary Hard Disk
+0x77        Secondary Hard Disk - unreliable
+-------------------------------------------------
+DOS compatibility interrupt (0x20): Program terminate
+DOS compatibility interrupts (0x21) with function number in ah:
+-------------------------------------------------
+TONY interrupts:
 0x80 - 0x87: timer
-0x88 - 0x8d: sound
+0x88 - 0x8b: sound
+0x8c - 0x8d: com control
 0x8e - 0x8f: math
 0x90 - 0xaf: display
 0xb0 - 0xb7: keyboard
@@ -52,14 +97,20 @@
         BP -> Operation 
             0: Addition
             1: Subtraction
+            2: Equality Check
         DX:AX -> Number 1
         CX:BX -> Number 2
     output:
-        AX:DX -> Result 
+        DX:AX -> Result 
         BP -> Error 
             0x0000: No error
             0x0001: Overflow
             0xffff: Operation not specified
+            For equality check:
+                0b000: Not equal
+                0b001: Equal
+                0b010: DX:AX greater than CX:BX
+                0b100: DX:AX smaller than CX:BX
 -------------------------------------------------
 
 
@@ -356,6 +407,18 @@
         none
     output: 
         none
+-------------------------------------------------
+0xf2
+    Call COM program
+    input:
+        DS:SI -> Filename of COM program
+        ES:DI -> Command line arguments as string
+    output:
+        AX -> Error code
+            0x00: No error
+            0x01: File not found
+            0x02: Not enough RAM
+            0x04: File to large
 -------------------------------------------------
 0xff
     Software

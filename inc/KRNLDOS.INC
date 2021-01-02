@@ -23,28 +23,23 @@
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
-; TONY Kernel machine language terminal module
+; TONY Kernel DOS compatibility module
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
 ; Constants
 ;-------------------------------------------------------------------------------
-MLT_BUFFER_SIZE     equ 80
-MLT_CHAR            equ '*'
-MLT_SEPARATOR_CHAR  equ ' '
-MLT_READ            equ 'R'
-MLT_WRITE           equ 'W'
-MLT_EXECUTE         equ 'E'
-MLT_NANI            equ '?'
+
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
-; Starts the machine language terminal
-; Address R returns the containing value
-; Address R Address returns the containing values (span)
-; Address W value sets the value of address to value
-; Address W value value value ... sets the values of addresses to values
-; Address E Sets execution to specified address
+; Variables
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; DOS compatibility interrupt: Program terminate
 ;
 ; input: 
 ;   none
@@ -52,77 +47,20 @@ MLT_NANI            equ '?'
 ; output:
 ;   none
 ;-------------------------------------------------------------------------------
-mlt_start:
-    pusha
-    pushf
-    push es
-    push ds
-
-    mov ax, cs
-    mov es, ax
-    mov ds, ax
-
-    .mlt_loop:
-        ; putch
-        mov al, MLT_CHAR
-        int 0x90
-
-        ; readln
-        mov cx, MLT_BUFFER_SIZE
-        mov di, .mlt_buffer
-        int 0xb1
-
-        ; split string
-        mov ah, 0
-        mov al, MLT_SEPARATOR_CHAR
-        mov di, .mlt_buffer
-        mov di, .mlt_split_buffer
-        int 0xd4
-
-        cmp byte [ds:di], MLT_READ
-        je .mlt_read
-
-        cmp byte [ds:di], MLT_WRITE
-        je .mlt_write
-
-        cmp byte [ds:di], MLT_EXECUTE
-        je .mlt_execute
-
-        ; putch
-        mov al, MLT_NANI
-        int 0x90
-
-        jmp .mlt_loop
-
-    .mlt_read:
-        jmp .mlt_loop
-
-    .mlt_write:
-        jmp .mlt_loop
-
-    .mlt_execute:
-        jmp .mlt_loop
-
-    .done:
-        pop ds
-        pop es
-        popf
-        popa
-        iret
-
-    .mlt_buffer       times MLT_BUFFER_SIZE db 0
-    .mlt_split_buffer times MLT_BUFFER_SIZE db 0
+dos_compatibility_terminate:
+    jmp misc_end_active_com
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
-; Description
+; DOS compatibility interrupt
 ;
 ; input: 
-;   none
+;   ah -> Function number
+;       
 ;
 ; output:
 ;   none
 ;-------------------------------------------------------------------------------
-;name:
-;    iret / ret
+dos_compatibility:
+    iret
 ;-------------------------------------------------------------------------------

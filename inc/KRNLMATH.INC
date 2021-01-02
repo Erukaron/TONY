@@ -45,15 +45,22 @@
 ;   BP -> Operation 
 ;       0: Addition
 ;       1: Subtraction
+;       2: Equality Check
 ;   DX:AX -> Number 1
 ;   CX:BX -> Number 2
 ;
 ; output:
-;   AX:DX -> Result 
+;   DX:AX -> Result 
 ;   BP -> Error 
 ;       0x0000: No error
 ;       0x0001: Overflow
 ;       0xffff: Operation not specified
+;
+;       For equality check:
+;           0b000: Not equal
+;           0b001: Equal
+;           0b010: DX:AX greater than CX:BX
+;           0b100: DX:AX smaller than CX:BX
 ;-------------------------------------------------------------------------------
 math_32_bit_operation:
     push bx
@@ -63,6 +70,8 @@ math_32_bit_operation:
     jz .addition
     cmp bp, 1
     jz .subtraction
+    cmp bp, 2
+    jz .equality
     jmp .error
 
     .addition:
@@ -94,6 +103,25 @@ math_32_bit_operation:
 
         mov bp, 1 ; On overflow
         jmp .done
+
+    .equality:
+        cmp dx, cx
+        ja .equality_greater
+        jl .equality_lesser
+        cmp ax, bx
+        ja .equality_greater
+        jl .equality_lesser
+        jz .equality_equal
+
+        .equality_greater:
+            mov bp, 0b010
+            jmp .done
+        .equality_lesser:
+            mov bp, 0b100
+            jmp .done
+        .equality_equal:
+            mov bp, 0b000
+            jmp .done
 
     .error:
         mov bp, 0xffff

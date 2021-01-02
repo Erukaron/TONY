@@ -29,12 +29,17 @@ if "%1" == "keyboard" (
 							call MAKE_IMG.BAT %2
 							REM Add cd iso
 						) else (
-							:: default to make all
-							if "%1" == "" (
-								call MAKE_IMG.BAT
-								REM Add cd iso
+							if "%1" == "com" (
+								call BUILD_COMS.BAT
 							) else (
-								echo Unknown option: "%1"
+								:: default to make all
+								if "%1" == "" (
+									call BUILD_COMS.BAT
+									call MAKE_IMG.BAT
+									REM Add cd iso
+								) else (
+									echo Unknown option: "%1"
+								)
 							)
 						)
 					)

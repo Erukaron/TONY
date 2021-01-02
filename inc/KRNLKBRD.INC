@@ -95,10 +95,14 @@ keyboard_init:
 ;-------------------------------------------------------------------------------
 keyboard_update_keymap:
     ; Load keymap to keyboard_keymap
-    mov di, keyboard_keymap
-    push cs
+    push es
+    push di
+        push cs
+        pop es
+        mov di, keyboard_keymap
+        int 0xc0
+    pop di
     pop es
-    int 0xc0
 
     ret
 ;-------------------------------------------------------------------------------

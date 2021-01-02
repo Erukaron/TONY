@@ -24,4 +24,28 @@
 [ ] Berechnungen und Vergleiche für 32-Bit Zahlen
 [ ] String to int
 [ ] int to String
-[ ] Ausführung von BIN und COM Dateien einbauen
+[x] Ausführung von COM Dateien Interrupt einbauen
+    Dateigröße reservieren
+    Listenelement hinzufügen (Erstes Listenelement in Variable speichern)
+        Listenelementgröße: 16 Byte
+        Segment + Offset von Filehandle des aufzurufenden Programms
+        Segment + Offset von Stack vor dem Aufruf des Unterprogramms
+        Segment + Offset des nächsten Listenelements (0xfffff), falls Ende der Liste
+    Interrupt zum Beenden an Offset 0 schreiben
+    PSP füllen
+    DS und ES auf Offset anpassen
+    word 0 auf Stack schreiben -> Beim RET wird zu Offset 0 gesprungen -> Verlassen interrupt
+    Hardware Interrupts aktivieren (sti), damit diese während der Ausführung von Programmen aufgerufen werden
+    Sprung an Offset 0x100
+    Kein Iret, COM werden mit Verlassen interrupt verlassen -> Kommentar schreiben
+[x] Verlassen Interrupt für Unterprozess
+    Taskliste ab erstem Element durchlaufen, bis Segment + Offset des Files des aufgerufenen Programms mit CS und IP aus dem Stack übereinstimmen
+        Speicher von Datei freigeben -> Dazu COM aus Listenelement suchen + 0x100 für psp und deallokieren
+        Listenelement ausketten -> bei letztem Listenelement Vars auf 0 setzen
+        Stack aus Segment und Offset aus Listenelement wieder herstellen
+        Listenelementspeicher freigeben
+    Iret kehrt zum Aufruf von Interrupt zur Ausführung von COM zurück, da dort kein Iret ausgeführt wird
+[ ] Interrupt exceptions umprogrammieren -> Fehlermeldung geben / aktuelles Programm beenden
+    Ab Interrupt exception 8 (auch hardware interrupt) im pic prüfen, ob hardware interrupt, falls nicht exception
+[ ] Warnung ausgeben, wenn Datei aus Kernel cfg nicht gefunden -> ggf. kein Grafikmodus starten 
+Bei Fehlender Keyboard Datei halten

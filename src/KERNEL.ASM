@@ -87,7 +87,7 @@ kernel_setup:
     call install_fat
     call install_string
     call install_convert
-    call install_mlt
+    call install_misc
 
     mov al, 0xf1
     mov bx, _kernel_test_gfx
@@ -101,16 +101,16 @@ kernel_setup:
     int 0x91
     call keyboard_update_keymap
 
-    ; read font
-    mov si, font_file
-    int 0x91
-    call display_update_font
-
     ; check if gfx mode should be enabled
     mov ah, FUNC_KEY_F8
     int 0xb2
     cmp al, 0x01
     je .no_gfx_mode
+        ; read font
+        mov si, font_file
+        int 0x91
+        call display_update_font
+
         ; Now that we have a font file, switch to gfx mode
         mov al, 1 ; gfx mode
         int 0x93 ; Switch video mode
@@ -119,11 +119,22 @@ kernel_setup:
     ; -------------------Testcode
     int 0xf1 ; GFX Test
 
-    ; Wait 5 seconds
+    ; Wait 2 seconds
     mov ax, 2000
-    int 0x81
+    ;int 0x81
 
     int 0x95 ; cls
+
+    mov ax, cs
+    mov ds, ax
+    mov es, ax
+    mov si, .filename
+    mov di, .cmd_line
+    int 0xf2
+    jmp .loop1
+
+    .filename db 'ECHOCALL.COM', 0
+    .cmd_line db 'Call text!!!', 0
 
     .loop1:
     mov cx, 256
@@ -348,9 +359,21 @@ install_convert:
 
     ret
 
-install_mlt:
+install_misc:
+    mov al, 0x20
+    mov bx, dos_compatibility_terminate
+    call kernel_install_interrupt
+
+    mov al, 0x21
+    mov bx, dos_compatibility
+    call kernel_install_interrupt
+
     mov al, 0xf0
     mov bx, mlt_start
+    call kernel_install_interrupt
+
+    mov al, 0xf2
+    mov bx, misc_start_com
     call kernel_install_interrupt
 
     ret
@@ -754,5 +777,6 @@ _kernel_test_gfx:
 %include "KRNLFAT.INC"
 %include "KRNLSTR.INC"
 %include "KRNLCVRT.INC"
-%include "KRNLMLT.INC"
+%include "KRNLMISC.INC"
+%include "KRNLDOS.INC"
 ;-------------------------------------------------------------------------------

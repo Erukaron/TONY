@@ -283,8 +283,14 @@ display_clear_screen:
 ;-------------------------------------------------------------------------------
 display_update_font:
     ; Load keymap to keyboard_keymap
-    mov di, display_font_array
-    int 0xc0
+    push es
+    push di
+        push cs
+        pop es
+        mov di, display_font_array
+        int 0xc0
+    pop di
+    pop es
 
     ret
 ;-------------------------------------------------------------------------------

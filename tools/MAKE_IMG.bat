@@ -105,6 +105,7 @@ copy README.MD tmpfiles\txt /Y
 :: Copy binary files
 copy files\*.MAP tmpfiles\bin /Y
 copy files\*.BIN tmpfiles\bin /Y
+copy files\*.COM tmpfiles\bin /Y
 echo.
 
 :: Add txt files to root dir

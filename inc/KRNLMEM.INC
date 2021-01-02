@@ -262,6 +262,23 @@ memory_allocate:
         pop dx
         and dx, 0x000f ; nibbles 0 through 2 of the offset are now addressed by the segment
 
+        cmp bx, 0xffff
+        jz .no_init
+        cmp dx, 0xffff
+        jz .no_init
+
+        ; Initialize allocated memory
+        mov es, bx
+        mov di, dx
+        mov cx, [cs:.requested_bytes]
+        cld
+        mov al, 0
+        .init_allocated:
+            stosb
+        loop .init_allocated
+
+        .no_init:
+
         pop es
         pop ds
         pop di

@@ -1,3 +1,4 @@
 output
 tools/Bochs-2.6.11
 tools/hiew32demo.exe
+files/*.COM
