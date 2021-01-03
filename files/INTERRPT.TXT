@@ -171,6 +171,19 @@ TONY interrupts:
     output:
         AL -> Video mode (0 : Textmode 80x25, 1 : Videomode 320x200)
 -------------------------------------------------
+0x97
+    Print string with prefix
+    input:
+        AL -> Prefix code
+            0: Info
+            1: Warning
+            2: Error
+            4: Critical
+        DS:SI -> 0 terminated string
+    output:
+        none
+-------------------------------------------------
+
 
 
 

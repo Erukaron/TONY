@@ -112,7 +112,7 @@ str_contains:
         je .si_zero
 
         cmp byte [es:di], 0
-        je .contains
+        je .di_zero
 
         mov al, [es:di]
         mov ah, [ds:si]
@@ -135,7 +135,7 @@ str_contains:
 
     .si_zero:
         cmp byte[es:di], 0
-        je .contains
+        je .di_zero
         jmp .no_contain
 
     .no_contain:
@@ -147,6 +147,14 @@ str_contains:
 
         xor ax, ax
         jmp .done
+
+    .di_zero:
+        ; Check if strings should be equal -> if so, check if si is also zero
+        cmp byte [cs:.equal_check], 1
+        jnz .contains
+
+        cmp byte [ds:si], 0
+        jnz .no_contain
 
     .contains:
         ; set no carry in stack
@@ -181,6 +189,12 @@ str_copy_substring:
     pushf
     pusha
 
+    cmp bx, dx
+    jz .done ; Nothing to copy
+
+    cmp bx, dx
+    ja .error_start_greater
+
     add si, bx ; start to copy from
 
     ; calculate loop iterations
@@ -196,10 +210,15 @@ str_copy_substring:
 
     mov al, 0
     stosb
+    jmp .done
 
-    popa
-    popf
-    iret
+    .error_start_greater:
+        jmp .done
+
+    .done:
+        popa
+        popf
+        iret
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------

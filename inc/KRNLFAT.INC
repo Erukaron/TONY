@@ -54,7 +54,7 @@ FAT_ROOTDIR_OFFSET_START_CLUSTER    equ 0x1a
 ;-------------------------------------------------------------------------------
 fat_ident_buffer times FAT_IDENT_LENGTH + 1 db 0 ; NNNNNNNNEEE0
 fat_data_start_sector dw 0 ; Start of data on disk -> Offset is boot sector and other reserved sectors
-fat_print_dot_on_disk_access db 1
+fat_print_dot_on_disk_access db 1, 0 ; word, so it can be pushed to the stack
 fat_current_drive db 0
 NOT_IMPLEMENTED db "THIS FEATURE IS NOT YET IMPLEMENTED! BREAKPOINT IS GENERATED JUST BEFOR THIS CALL -> CHECK CALLER VIA STACK", 0
 
@@ -74,31 +74,36 @@ fat_load_root_directory:
     pusha 
     push es
 
-    ; Calculate size of root directory (cx)
-    xor cx, cx
-    xor dx, dx
-    mov ax, 0x0020 ; Every entry is 32 bytes long
-    mul word [cs:bpbRootEntries] ; Multiply by the number of root entries
-    div word [cs:bpbBytesPerSector] ; Get the size of the root directory in sectors
-    xchg ax, cx ; Store in cx
+        ; Calculate size of root directory (cx)
+        xor cx, cx
+        xor dx, dx
+        mov ax, 0x0020 ; Every entry is 32 bytes long
+        mul word [cs:bpbRootEntries] ; Multiply by the number of root entries
+        div word [cs:bpbBytesPerSector] ; Get the size of the root directory in sectors
+        xchg ax, cx ; Store in cx
 
-    ; Calculate location of root directory (ax)
-    mov al, byte [cs:bpbNumberOfFATs]
-    mul word [cs:bpbSectorsPerFAT]
-    add ax, word [cs:bpbReservedSectors] ; Add bootsector and other reserved sectors
+        ; Calculate location of root directory (ax)
+        mov al, byte [cs:bpbNumberOfFATs]
+        mul word [cs:bpbSectorsPerFAT]
+        add ax, word [cs:bpbReservedSectors] ; Add bootsector and other reserved sectors
 
-    ; Calculate start of data sector
-    mov word [cs:fat_data_start_sector], ax
-    add word [cs:fat_data_start_sector], cx
+        ; Calculate start of data sector
+        mov word [cs:fat_data_start_sector], ax
+        add word [cs:fat_data_start_sector], cx
 
-    ; Read root dir
-    push word ROOT_SEGMENT
+        ; Do not print '.' for rootdir or fat
+        push word [cs:fat_print_dot_on_disk_access]
+            mov byte [cs:fat_print_dot_on_disk_access], 0
+
+            ; Read root dir
+            push word ROOT_SEGMENT
+            pop es
+            mov bx, ROOT_OFFSET
+            mov dl, byte [cs:fat_current_drive]
+            call fat_read_device
+        pop word [cs:fat_print_dot_on_disk_access]
+
     pop es
-    mov bx, ROOT_OFFSET
-    mov dl, byte [cs:fat_current_drive]
-    call fat_read_device
-    pop es
-
     popa
     ret
 ;-------------------------------------------------------------------------------
@@ -116,24 +121,29 @@ fat_load_file_allocation_table:
     pusha
     push es
 
-    ; Calculate fat size
-    xor ax, ax
-    ;mov al, byte [bpbNumberOfFATs]
-    ; Lets just read one FAT, as the second one is redundant
-    mov al, 1
-    mul word [cs:bpbSectorsPerFAT]
-    mov cx, ax
+        ; Calculate fat size
+        xor ax, ax
+        ;mov al, byte [bpbNumberOfFATs]
+        ; Lets just read one FAT, as the second one is redundant
+        mov al, 1
+        mul word [cs:bpbSectorsPerFAT]
+        mov cx, ax
 
-    ; Calculate fat location
-    mov ax, word [cs:bpbReservedSectors]
+        ; Calculate fat location
+        mov ax, word [cs:bpbReservedSectors]
 
-    ; Read fat into memory 
-    push word FAT_SEGMENT
+        ; Do not print '.' for rootdir or fat
+        push word [cs:fat_print_dot_on_disk_access]
+            mov byte [cs:fat_print_dot_on_disk_access], 0
+
+            ; Read fat into memory 
+            push word FAT_SEGMENT
+            pop es
+            mov bx, FAT_OFFSET
+            call fat_read_device
+        pop word [cs:fat_print_dot_on_disk_access]
+    
     pop es
-    mov bx, FAT_OFFSET
-    call fat_read_device
-    pop es
-
     popa
     ret
 ;-------------------------------------------------------------------------------
@@ -1254,7 +1264,7 @@ fat_write_next_bytes:
 ;-------------------------------------------------------------------------------
 fat_callback_disk_operation:
     cmp [cs:fat_print_dot_on_disk_access], byte 0
-    je .done
+    jz .done
 
     mov al, FAT_DISK_OPERATION_IDENT
     int 0x90

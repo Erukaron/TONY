@@ -85,6 +85,51 @@ keyboard_init:
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
+; Sets the intial keyboard keymap
+;
+; input: 
+;   ds:si -> keyboard-map file name
+;
+; output:
+;   none
+;-------------------------------------------------------------------------------
+keyboard_set_intial_keymap:
+    push ds
+    push si
+        push cs
+        pop ds
+        mov al, 0
+        mov si, .info_reading_keymap
+        int 0x97
+    pop si
+    pop ds
+
+    int 0x91 ; Display filename
+
+    int 0xc1
+    cmp ax, -1
+    jz .critical_hang
+
+    call keyboard_update_keymap
+    call crlf
+
+    ret
+
+    .critical_hang:
+        mov al, 4
+        push cs
+        pop ds
+        mov si, .critical_keymap_does_not_exist
+        int 0x97
+
+    .hang_loop:
+        cli
+        hlt
+    jmp .hang_loop
+
+    .info_reading_keymap db "Reading keymap file ", 0
+    .critical_keymap_does_not_exist db "Keymap does not exist! System hung up!", 0
+;-------------------------------------------------------------------------------
 ; Updates the keyboard keymap
 ;
 ; input: 

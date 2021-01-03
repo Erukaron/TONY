@@ -51,8 +51,10 @@ kernel_config_file db "KERNEL.CFG", 0
 ; !!! Vars need to have FAT_INPUT_LENGTH + zero terminator size
 ;-------------------------------------------------------------------------------
 keymap_file db "KBRD_EN.MAP ", 0
-shell_file  db "            ", 0
+shell_file  db "SHELL.COM   ", 0
 font_file   db "FONT_3X5.BIN", 0
+shell_cmd_segment dw 0
+shell_cmd_offset dw 0
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
@@ -98,43 +100,111 @@ kernel_setup:
 
     ; read keyboard file
     mov si, keymap_file
-    int 0x91
-    call keyboard_update_keymap
+    call keyboard_set_intial_keymap
 
     ; check if gfx mode should be enabled
     mov ah, FUNC_KEY_F8
     int 0xb2
     cmp al, 0x01
-    je .no_gfx_mode
+    je .after_gfx_mode
+    ; check if font file exists
+    mov si, font_file
+    int 0xc1
+    cmp ax, -1
+    jz .no_font
         ; read font
+        mov al, 0
+        mov si, .info_reading_font_file
+        int 0x97
         mov si, font_file
         int 0x91
         call display_update_font
+        call crlf
 
         ; Now that we have a font file, switch to gfx mode
         mov al, 1 ; gfx mode
         int 0x93 ; Switch video mode
-    .no_gfx_mode:
 
-    ; -------------------Testcode
-    int 0xf1 ; GFX Test
+                            ; -------------------Testcode
+                            ;int 0xf1 ; GFX Test
 
-    ; Wait 2 seconds
-    mov ax, 2000
-    ;int 0x81
+                            ; Wait 2 seconds
+                            ;mov ax, 2000
+                            ;int 0x81
 
-    int 0x95 ; cls
+                            ;int 0x95 ; cls
 
-    mov ax, cs
-    mov ds, ax
-    mov es, ax
-    mov si, .filename
-    mov di, .cmd_line
-    int 0xf2
-    jmp .loop1
+        jmp .after_gfx_mode
+    .no_font:
+        push si
+            mov al, 2
+            mov si, .error_no_font_file
+            int 0x97
+        pop si
 
-    .filename db 'ECHOCALL.COM', 0
-    .cmd_line db 'Call text!!!', 0
+        int 0x91
+
+        jmp .after_gfx_mode
+    .info_reading_font_file db "Reading font file: ", 0
+    .error_no_font_file db "Font file does not exist! Graphics mode disabled! : ", 0
+    .after_gfx_mode:
+
+    ; check if shell exists
+    mov si, shell_file
+    int 0xc1
+    cmp ax, -1
+    jz .no_shell
+        ; read shell
+        mov al, 0
+        mov si, .info_reading_shell_file
+        int 0x97
+        mov si, shell_file
+        int 0x91
+
+        ; check cmd line
+        push cs
+        pop es
+        mov di, .empty_shell_cmd
+        cmp word [cs:shell_cmd_segment], 0
+        jz .after_shell_cmd
+            call crlf
+
+            push word [cs:shell_cmd_segment]
+            pop es
+            mov di, [cs:shell_cmd_offset]
+
+            push ds
+            push si
+                mov al, 0
+                mov si, .info_shell_param
+                int 0x97
+
+                push es
+                pop ds
+                mov si, di
+
+                int 0x91
+            pop si
+            pop ds
+        .after_shell_cmd:
+
+        int 0xf2
+        jmp .after_shell
+    .no_shell:
+        mov al, 2
+        mov si, .error_no_shell_file
+        int 0x97
+
+        ; Wait 5 seconds befor starting the mlt
+        mov ax, 5000
+        int 0x81
+
+        jmp .after_shell
+    .info_reading_shell_file db "Loading shell: ", 0
+    .info_shell_param db "Using shell parameters: ", 0
+    .error_no_shell_file db "Shell does not exist!", ASCII_CR, ASCII_LF, 0
+    .empty_shell_cmd db 0
+    .after_shell:
 
     .loop1:
     mov cx, 256
@@ -158,6 +228,18 @@ kernel_setup:
 
     cli
     hlt
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Prints a crlf
+;-------------------------------------------------------------------------------
+crlf:
+    mov al, ASCII_CR
+    int 0x90
+    mov al, ASCII_LF
+    int 0x90
+
+    ret
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
@@ -234,12 +316,16 @@ install_display:
     mov bx, display_get_video_mode
     call kernel_install_interrupt
 
+    mov al, 0x97
+    mov bx, display_prefix_print
+    call kernel_install_interrupt
+
     mov si, .wait_msg
     int 0x91
 
     ret
 
-    .wait_msg db "WAIT", 0
+    .wait_msg db "WAIT", ASCII_CR, ASCII_LF, 0
 
 install_keyboard:
     mov al, 0x09 ; IRQ1 = INT9 is keyboard callback
@@ -568,14 +654,24 @@ process_config_file:
     mov [cs:.parameter_segment], bx
     mov [cs:.parameter_offset], dx
 
+    push cs
+    pop ds
+
     mov si, kernel_config_file
     int 0xc1 ; Get file size
     cmp ax, -1 ; file does not exist
     jz .done
 
+    push si
+        mov al, 0
+        mov si, .info_reading_config
+        int 0x97
+    pop si
+
     int 0xc2 ; Open file
     mov [cs:.file_segment], bp
     mov [cs:.file_offset], bx
+    call crlf
 
     .loop:
         cmp byte [cs:.process_file], FALSE
@@ -591,7 +687,7 @@ process_config_file:
         mov cx, .MAX_STR_LENGTH
         int 0xc5
 
-        cmp dh, 0x01 ; If not eof, skip setting precess_file to false
+        cmp dh, 0x01 ; If not eof, skip setting process_file to false
         jnz .skip_set_exit_loop
             mov byte [cs:.process_file], FALSE
         .skip_set_exit_loop:
@@ -634,6 +730,15 @@ process_config_file:
         int 0xd2
         jnc .set_shell_file ; set var, if equal
 
+        ; Shell parameter
+        mov ah, 1 ; Check if equal
+        ; ds:si already set
+        push cs
+        pop es
+        mov di, .config_shell_cmd_ident
+        int 0xd2
+        jnc .set_shell_params ; set var, if equal
+
         ; Font file
         mov ah, 1 ; Check if equal
         ; ds:si already set
@@ -673,6 +778,12 @@ process_config_file:
         push word [cs:.parameter_segment]
         pop ds
         mov si, [cs:.parameter_offset]
+
+        ; Check if file exists
+        int 0xc1
+        cmp ax, -1
+        jz .error_file_not_found
+
         push cs
         pop es
         mov di, keymap_file
@@ -686,6 +797,12 @@ process_config_file:
         push word [cs:.parameter_segment]
         pop ds
         mov si, [cs:.parameter_offset]
+
+        ; Check if file exists
+        int 0xc1
+        cmp ax, -1
+        jz .error_file_not_found
+
         push cs
         pop es
         mov di, shell_file
@@ -695,10 +812,38 @@ process_config_file:
 
         jmp .loop
 
+    .set_shell_params:
+        push word [cs:.parameter_segment]
+        pop ds
+        mov si, [cs:.parameter_offset]
+
+        int 0xd0 ; get string length excluding terminator
+        inc ax
+
+        int 0xb8 ; reserve memory for command line arguments
+
+        ; Save location of string
+        mov [cs:shell_cmd_segment], bx
+        mov [cs:shell_cmd_offset], dx
+
+        mov es, bx
+        mov di, dx
+        mov bx, 0 ; Start from begin of string
+        mov dx, ax ; Length of string
+        int 0xd3 ; Copy substring to string
+
+        jmp .loop
+
     .set_font_file:
         push word [cs:.parameter_segment]
         pop ds
         mov si, [cs:.parameter_offset]
+
+        ; Check if file exists
+        int 0xc1
+        cmp ax, -1
+        jz .error_file_not_found
+
         push cs
         pop es
         mov di, font_file
@@ -708,9 +853,28 @@ process_config_file:
 
         jmp .loop 
 
+    .error_file_not_found:
+        ; ds:si locates to string of current file
+        mov al, 1 ; Warning
+        int 0x97
+
+        push ds
+        push si
+            push cs
+            pop ds
+            mov si, .warn_not_found_default
+            int 0x91
+        pop si
+        pop ds
+
+        jmp .loop
+
     .config_kbrd_ident db "KBRD_MAP", 0
     .config_shell_ident db "SHELL", 0
+    .config_shell_cmd_ident db "SHELL_PARAMS", 0
     .config_font_ident db "FONT", 0
+    .warn_not_found_default db " not found! Using default instead.", ASCII_CR, ASCII_LF, 0
+    .info_reading_config db "Reading kernel configuration file KERNEL.CFG", 0
     .file_segment dw 0
     .file_offset dw 0
     .str_segment dw 0

@@ -40,16 +40,20 @@ DISPLAY_GFX_SCREEN_HEIGHT   equ 200
 ;-------------------------------------------------------------------------------
 display_video_mode   db 0x00
 
-display_color        db 0x06 ; high nibble is background, low nibble foreground
-display_enable_blink db FALSE ; enables blinking or high intensity color
-display_current_x    db 0
-display_current_y    db 0
-display_max_x        db 79
-display_max_y        db 24
-display_min_x        db 0
-display_min_y        db 0
-display_cols         db 80
-display_lines        db 25
+display_color          db 0x06 ; high nibble is background, low nibble foreground
+display_info_color     db 0x09 ; high nibble is background, low nibble foreground
+display_warning_color  db 0x0e ; high nibble is background, low nibble foreground
+display_error_color    db 0x0c ; high nibble is background, low nibble foreground
+display_critical_color db 0x03 ; high nibble is background, low nibble foreground
+display_enable_blink   db FALSE ; enables blinking or high intensity color
+display_current_x      db 0
+display_current_y      db 0
+display_max_x          db 79
+display_max_y          db 24
+display_min_x          db 0
+display_min_y          db 0
+display_cols           db 80
+display_lines          db 25
 
 display_font_array:
     times 512 db 0
@@ -72,6 +76,10 @@ display_gfx_fg_color     db 43
 ;display_gfx_fg_color     db 53
 ; white
 ;display_gfx_fg_color     db 15
+display_gfx_fg_info_color     db 0x09 
+display_gfx_fg_warning_color  db 0x2c 
+display_gfx_fg_error_color    db 0x0c 
+display_gfx_fg_critical_color db 0x04 
 display_gfx_current_x    dw 0
 display_gfx_current_y    db 0
 display_gfx_max_x        dw 319
@@ -858,4 +866,123 @@ display_put_pixel:
         pop es
         popa
         iret
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Prints a string with a prefix
+;
+; input: 
+;   AL -> Prefix code
+;       0: Info
+;       1: Warning
+;       2: Error
+;       4: Critical
+;   DS:SI -> 0 terminated string
+;
+; output:
+;   none
+;-------------------------------------------------------------------------------
+display_prefix_print:
+    pusha 
+
+    cmp al, 4
+    jg .done
+
+    push ds
+    push si
+    mov dh, [cs:display_gfx_bg_color]
+    mov dl, [cs:display_gfx_fg_color]
+    push dx
+    mov bl, [cs:display_color]
+    push bx
+        push cs
+        pop ds
+        mov si, .prefix_open_char
+        int 0x91
+
+        cmp al, 0
+        jnz .no_info
+            mov dl, [cs:display_gfx_fg_info_color]
+            mov [cs:display_gfx_fg_color], dl
+            mov al, [cs:display_info_color]
+            mov [cs:display_color], al
+            mov si, .prefix_info
+            int 0x91
+            jmp .print
+        .no_info:
+
+        cmp al, 1
+        jnz .no_warning
+            mov dl, [cs:display_gfx_fg_warning_color]
+            mov [cs:display_gfx_fg_color], dl
+            mov al, [cs:display_warning_color]
+            mov [cs:display_color], al
+            mov si, .prefix_warning
+            int 0x91
+            jmp .print
+        .no_warning:
+
+        cmp al, 2
+        jnz .no_error
+            mov dl, [cs:display_gfx_fg_error_color]
+            mov [cs:display_gfx_fg_color], dl
+            mov al, [cs:display_error_color]
+            mov [cs:display_color], al
+            mov si, .prefix_error
+            int 0x91
+            jmp .print
+        .no_error:
+
+        cmp al, 4
+        jnz .no_critical
+            mov dl, [cs:display_gfx_fg_critical_color]
+            mov [cs:display_gfx_fg_color], dl
+            mov al, [cs:display_critical_color]
+            mov [cs:display_color], al
+            mov si, .prefix_critical
+            int 0x91
+            jmp .print
+        .no_critical:
+
+    .print:
+        ; reset colors
+        pop bx
+        mov [cs:display_color], bl
+        pop dx
+        mov [cs:display_gfx_bg_color], dh
+        mov [cs:display_gfx_fg_color], dl
+
+        push cs
+        pop ds
+        mov si, .prefix_close_char
+        int 0x91
+
+        pop si
+        pop ds
+
+        int 0x91
+
+    .done:
+        popa
+        iret
+
+    .prefix_open_char db "[", 0
+    .prefix_close_char db "] ", 0
+    .prefix_info db "INFO", 0
+    .prefix_warning db "WARNING", 0
+    .prefix_error db "ERROR", 0
+    .prefix_critical db "CRITICAL", 0
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Description
+;
+; input: 
+;   none
+;
+; output:
+;   none
+;-------------------------------------------------------------------------------
+;name:
+;    ret
 ;-------------------------------------------------------------------------------
