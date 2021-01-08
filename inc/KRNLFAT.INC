@@ -159,6 +159,8 @@ fat_load_file_allocation_table:
 ;    carry flag set on error
 ;-------------------------------------------------------------------------------
 fat_load:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+
     pushf
     pusha
     push ds
@@ -263,7 +265,6 @@ fat_transform_filename_fat_format:
         ; Save actual filename
         mov si, .filename_copy
         int 0xd0 ; get length of filename
-        dec ax
 
         mov bx, 0
         mov dx, ax
@@ -280,7 +281,6 @@ fat_transform_filename_fat_format:
         add di, FAT_INPUT_LENGTH - FAT_EXTENSION_FAT_LENGTH - 1
         mov si, .fileextension
         int 0xd0 ; length of extension
-        dec ax
 
         mov bx, 0
         mov dx, ax
@@ -650,6 +650,8 @@ fat_write_device:
 ;    dx:bx -> file size in bytes (-1 if non existant)
 ;-------------------------------------------------------------------------------
 fat_get_file_size:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+
     pusha
     push ds
     push es
@@ -757,6 +759,8 @@ fat_get_file_size:
 ; 0x1a (6 Bytes) Unused
 ;-------------------------------------------------------------------------------
 fat_open:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+
     push ds
     push si
 
@@ -952,6 +956,8 @@ fat_open:
 ;   none
 ;-------------------------------------------------------------------------------
 fat_close:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+
     push ds
     pusha
 
@@ -991,6 +997,8 @@ fat_close:
 ;       0x80: unknown error
 ;-------------------------------------------------------------------------------
 fat_read_next_byte:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+
     ; Check if next byte is inside the size of the file
     mov dh, 0x80
 
@@ -1125,6 +1133,8 @@ fat_read_next_byte:
 ;       0xff: Function (AX) not supported!
 ;-------------------------------------------------------------------------------
 fat_read_next_string:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+
     push di
     push ax
 
@@ -1215,6 +1225,8 @@ fat_write_next_byte:
     ; 4) Increase file size in file handle
     ; 5) Write sector in memory to disk
     ; 6) Write file information from file handle to root directory (size)
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+
     xchg bx, bx
     push cs
     pop ds
@@ -1240,6 +1252,8 @@ fat_write_next_byte:
 ;   none
 ;-------------------------------------------------------------------------------
 fat_write_next_bytes:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+
     xchg bx, bx
     push cs
     pop ds
@@ -1263,6 +1277,8 @@ fat_write_next_bytes:
 ;   none
 ;-------------------------------------------------------------------------------
 fat_callback_disk_operation:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+
     cmp [cs:fat_print_dot_on_disk_access], byte 0
     jz .done
 
@@ -1283,5 +1299,6 @@ fat_callback_disk_operation:
 ;   none
 ;-------------------------------------------------------------------------------
 ;name:
+;    sti ; Allow hardware interrupts to occur while processing software interrupts
 ;    iret / ret
 ;-------------------------------------------------------------------------------

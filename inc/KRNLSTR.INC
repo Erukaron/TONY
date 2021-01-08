@@ -34,15 +34,16 @@
 ;   ax -> Length of string
 ;-------------------------------------------------------------------------------
 str_get_length:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+
     push si
     xor ax, ax
 
     .loop:
-        inc ax
-
         cmp byte [ds:si], 0
         je .done
 
+        inc ax
         inc si
 
         jmp .loop
@@ -63,6 +64,8 @@ str_get_length:
 ;   es:di -> Initialized string
 ;-------------------------------------------------------------------------------
 str_init:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+
     push cx
     push di
 
@@ -89,7 +92,10 @@ str_init:
 ; Checks if a string contains another string
 ;
 ; input:
-;   ah -> 0 contains substring, 1 are strings equal
+;   ah -> mode 
+;       0 contains substring 
+;       1 are strings equal
+;       2 caseinsensitive
 ;   ds:si -> String to be checked
 ;   es:di -> Check string
 ;
@@ -98,11 +104,13 @@ str_init:
 ;   ax -> start of es:di string inside ds:si string (relative position to start of string)
 ;-------------------------------------------------------------------------------
 str_contains:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+
     pusha
     push es
     ; !! If adding pushes -> See .no_contain and .contains -> Changing values in stack
 
-    mov [cs:.equal_check], ah
+    mov [cs:.mode], ah
 
     mov bx, di ; for restoring di
     mov dx, si ; for calculation of relative start address on match
@@ -126,8 +134,8 @@ str_contains:
 
     .skip_si_restore_di:
         ; check if strings need to be equal, if so leave -> if the program reaches here, the strings are unequal
-        cmp byte [cs:.equal_check], 1
-        jz .no_contain
+        test byte [cs:.mode], 1
+        jnz .no_contain
 
         mov di, bx
         inc si
@@ -150,8 +158,8 @@ str_contains:
 
     .di_zero:
         ; Check if strings should be equal -> if so, check if si is also zero
-        cmp byte [cs:.equal_check], 1
-        jnz .contains
+        test byte [cs:.mode], 1
+        jz .contains
 
         cmp byte [ds:si], 0
         jnz .no_contain
@@ -171,7 +179,7 @@ str_contains:
         popa
         iret
 
-    .equal_check db 0
+    .mode db 0
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
@@ -186,6 +194,8 @@ str_contains:
 ;   es:di -> target string buffer (will be 0 terminated, needs dx-bx + 1 bytes)
 ;-------------------------------------------------------------------------------
 str_copy_substring:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+
     pushf
     pusha
 
@@ -237,6 +247,8 @@ str_copy_substring:
 ;   es:di -> Buffer to second part
 ;-------------------------------------------------------------------------------
 str_split:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+
     pushf
     pusha
 
@@ -311,6 +323,9 @@ str_split:
 ; Removes all white space characters from a string (space, tab, cr and lf)
 ;
 ; input: 
+;   ah -> mode
+;       1: Remove all whitespace characters
+;       2: Remove all multiple whitespace characters e.g. "   " -> " "
 ;   ds:si -> string to remove white space characters from
 ;
 ; output:
@@ -318,48 +333,97 @@ str_split:
 ;   cx -> Number of white spaces removed
 ;-------------------------------------------------------------------------------
 str_remove_whitespace:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+
+    pushf
+    push ax
     push ds
     push si
     xor cx, cx
     cld
 
-    .loop:
+    test ah, 1
+    jnz .loop_all
+
+    .loop_multiples:
         cmp byte [ds:si], 0
         jz .done
 
-        cmp byte [ds:si], ASCII_SP
-        jz .remove
-        cmp byte [ds:si], ASCII_TAB
-        jz .remove
-        cmp byte [ds:si], ASCII_LF
-        jz .remove
-        cmp byte [ds:si], ASCII_CR
-        jz .remove
+        call .is_whitespace
+        jnc .next_multiples
 
+        ; character is whitespace -> remove every following whitespace
         inc si
-    jmp .loop
+        .loop_multiples_inner:
+            cmp byte [ds:si], 0
+            jz .done
+
+            call .is_whitespace
+            jnc .next_multiples ; if not a whitespace, look for the next one
+
+            call .remove
+            jmp .loop_multiples_inner ; Do NOT increase si -> This will skip the new character at si, written by .remove
+
+            inc si
+        jmp .loop_multiples_inner
+
+        .next_multiples:
+        inc si
+    jmp .loop_multiples
+
+    .loop_all:
+        cmp byte [ds:si], 0
+        jz .done
+
+        call .is_whitespace
+        jnc .no_remove
+
+        call .remove
+        jmp .loop_all ; Do NOT increase si -> This will skip the new character at si, written by .remove
+
+        .no_remove:
+        inc si
+    jmp .loop_all
 
     .remove:
         inc cx
         push si
 
         ; shift every byte one position to the left, until zero termination is reached
-        .shift_bytes:
+        .shift_all_bytes:
             mov al, [ds:si + 1]
             mov [ds:si], al
             inc si
 
             cmp al, 0 
-            jnz .shift_bytes
+            jnz .shift_all_bytes
 
         pop si
 
-        jmp .loop ; Return to loop
+        ret
 
+    .is_whitespace:
+        cmp byte [ds:si], ASCII_SP
+        jz .set_carry
+        cmp byte [ds:si], ASCII_TAB
+        jz .set_carry
+        cmp byte [ds:si], ASCII_LF
+        jz .set_carry
+        cmp byte [ds:si], ASCII_CR
+        jz .set_carry
+
+        clc ; no whitespace
+        ret
+
+        .set_carry:
+            stc ; whitespace
+            ret
 
     .done:
         pop si
         pop ds
+        pop ax
+        popf
         iret
 ;-------------------------------------------------------------------------------
 
@@ -373,5 +437,6 @@ str_remove_whitespace:
 ;   none
 ;-------------------------------------------------------------------------------
 ;name:
+;    sti ; Allow hardware interrupts to occur while processing software interrupts
 ;    iret / ret
 ;-------------------------------------------------------------------------------

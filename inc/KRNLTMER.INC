@@ -265,6 +265,8 @@ timer_sleep_millis:
 ;   none
 ;-------------------------------------------------------------------------------
 timer_sleep_seconds:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+
     push cx
     push ax
 
@@ -289,5 +291,6 @@ timer_sleep_seconds:
 ;   none
 ;-------------------------------------------------------------------------------
 ;name:
+;    sti ; Allow hardware interrupts to occur while processing software interrupts
 ;    iret / ret
 ;-------------------------------------------------------------------------------

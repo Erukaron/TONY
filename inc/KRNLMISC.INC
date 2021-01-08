@@ -30,21 +30,10 @@
 ; Constants
 ;-------------------------------------------------------------------------------
 MLT_BUFFER_SIZE     equ 80
-MLT_CHAR            equ '*'
-MLT_SEPARATOR_CHAR  equ ' '
-MLT_READ            equ 'R'
-MLT_WRITE           equ 'W'
-MLT_EXECUTE         equ 'E'
-MLT_NANI            equ '?'
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
-; Starts the machine language terminal
-; Address R returns the containing value
-; Address R Address returns the containing values (span)
-; Address W value sets the value of address to value
-; Address W value value value ... sets the values of addresses to values
-; Address E Sets execution to specified address
+; Starts the machine language terminal (COSIC-Interpreter)
 ;
 ; input: 
 ;   none
@@ -53,65 +42,115 @@ MLT_NANI            equ '?'
 ;   none
 ;-------------------------------------------------------------------------------
 mlt_start:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+
     pusha
     pushf
     push es
     push ds
 
-    mov ax, cs
-    mov es, ax
-    mov ds, ax
+    push cs
+    pop ds
+    push cs
+    pop es
 
-    .mlt_loop:
-        ; putch
-        mov al, MLT_CHAR
+    ; ToDo: Create 32k Buffer
+
+    .loop:
+        mov al, '*'
         int 0x90
 
-        ; readln
         mov cx, MLT_BUFFER_SIZE
         mov di, .mlt_buffer
-        int 0xb1
+        mov al, 0x00
+        int 0xd1 ; initialize string
 
-        ; split string
-        mov ah, 0
-        mov al, MLT_SEPARATOR_CHAR
-        mov di, .mlt_buffer
+        mov cx, MLT_BUFFER_SIZE
         mov di, .mlt_split_buffer
-        int 0xd4
+        mov al, 0x00
+        int 0xd1 ; initialize string
 
-        cmp byte [ds:di], MLT_READ
-        je .mlt_read
+        mov di, .mlt_buffer
+        int 0xb1 ; read line
 
-        cmp byte [ds:di], MLT_WRITE
-        je .mlt_write
+        ; ToDo: first Line is numeric?
+            ; For every line in buffer split on space
 
-        cmp byte [ds:di], MLT_EXECUTE
-        je .mlt_execute
 
-        ; putch
-        mov al, MLT_NANI
+            ; see:
+                    ; Adds the string located at ds:si to the basic memory
+                    ; 1: String containing line number (DS:BX) (in ascii decimal form!)
+                    ; 2: String to add to memory (DS:SI)
+                    ; Operation:
+                    ; 1. Set Pointers to start of basic segment
+                    ; 2. Check Current line number against parameter line number
+                    ;   2.0. Get line number from current line
+                    ;   2.1. Check if current line number is bigger than parameter line number 
+                    ;       2.1.1. Parameter line number is bigger: Set current line pointer to start of next line
+                    ;       2.1.2. Parameter line number is smaller
+                    ;           2.1.2.1. Get Size of parameter line number + ' ' + command -> n
+                    ;           2.1.2.2. Check if enough space for adding (quit, if not)
+                    ;           2.1.2.3. Shift every character from last entry to current entry for n bytes
+                    ;           2.1.2.4. Fill parameter line number + ' ' + command + 0
+                    ;       2.1.3. Parameter line number is equal
+                    ;           2.1.3.1. Get Size of parameter line number + ' ' + command -> n
+                    ;           2.1.3.2. Get Size of current entry -> m
+                    ;           2.1.3.3. If new entry is bigger -> Shift for n-m bytes
+                    ;           2.1.3.4. If old entry is bigger -> Shift for n-m bytes in towards the beginning of memory
+                    ;           2.1.3.5. Insert entry
+                    ;   2.2. No next line -> Insert number + ' ' + command + 0 -> Update Next entry var
+
+
+            ; Exists line number?
+                ; Replace line -> Shift content
+            ; else
+                ; next line number greater than entered?
+                    ; insert line and shift rest
+                ; else
+                    ; insert line at end
+        ; else
+            ; run?
+                ; call routine -> remove every line number from buffer and loop over int 0xf3
+            ; list (<line> (to <line>))?
+                ; type buffer
+            ; new?
+                ; initialize buffer
+            ; else
+                ; process input as cosic instruction
+
+        mov si, .mlt_buffer
+        cmp word [es:si], 0
+        jz .loop
+
+        ; ToDo: dh entsprechend setzen
+        int 0xf3
+
+        cmp al, 0
+        jz .loop ; no error
+
+        ; Get integer from al
+        mov dl, al
+        int 0xe4
+
+        mov al, 1
+        mov si, .cosic_error
+        int 0x97
+
+        mov al, dh
         int 0x90
+        mov al, dl
+        int 0x90
+        call crlf
+    jmp .loop
 
-        jmp .mlt_loop
-
-    .mlt_read:
-        jmp .mlt_loop
-
-    .mlt_write:
-        jmp .mlt_loop
-
-    .mlt_execute:
-        jmp .mlt_loop
-
-    .done:
-        pop ds
-        pop es
-        popf
-        popa
-        iret
+    pop ds
+    pop es
+    popf
+    popa
 
     .mlt_buffer       times MLT_BUFFER_SIZE db 0
     .mlt_split_buffer times MLT_BUFFER_SIZE db 0
+    .cosic_error      db "COSIC errorcode: ", 0
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
@@ -149,6 +188,8 @@ misc_com_list_start_offset dw 0
 %include "OPCODES.INC"
 ;-------------------------------------------------------------------------------
 misc_start_com:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+
     xor ax, ax
 
     pusha
@@ -372,6 +413,8 @@ misc_start_com:
 ; Terminates the com program that was last added to the com task list
 ;-------------------------------------------------------------------------------
 misc_end_active_com:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+
     cmp word [cs:misc_com_list_start_segment], 0
     jz .error ; call without running program
 
@@ -403,6 +446,8 @@ misc_end_active_com:
 ; For a program located at 0x20100 bp needs to be 0x20000
 ;-------------------------------------------------------------------------------
 misc_end_com:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+
     cmp word [cs:misc_com_list_start_segment], 0
     jz .done ; call without running program
 
@@ -522,5 +567,6 @@ misc_end_com:
 ;   none
 ;-------------------------------------------------------------------------------
 ;name:
+;    sti ; Allow hardware interrupts to occur while processing software interrupts
 ;    iret / ret
 ;-------------------------------------------------------------------------------

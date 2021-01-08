@@ -105,6 +105,8 @@ memory_initialize_all:
 ;   BX = DX = 0xffff -> not enough memory
 ;-------------------------------------------------------------------------------
 memory_allocate:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+
     push ax
     push cx
     push si
@@ -204,7 +206,7 @@ memory_allocate:
             mov cx, 65536 / MEMORY_SMALLEST_UNIT / 8 ; size for one segment
             mov bx, 0 ; -> segment
 
-            ; Calculate segment numer into ax
+            ; Calculate segment number into ax
             xor dx, dx
             mov ax, di
             div cx
@@ -240,6 +242,11 @@ memory_allocate:
             jmp .found_offset_part2
 
     .done:
+        cmp bx, 0xffff
+        jz .no_init
+        cmp dx, 0xffff
+        jz .no_init
+
         ; s: segment address o: offset address
         ; BX:DX = ssss
         ;       +  oooo
@@ -262,15 +269,24 @@ memory_allocate:
         pop dx
         and dx, 0x000f ; nibbles 0 through 2 of the offset are now addressed by the segment
 
-        cmp bx, 0xffff
-        jz .no_init
-        cmp dx, 0xffff
-        jz .no_init
-
         ; Initialize allocated memory
+        push dx
+            ; Check if requested bytes are at chunk size
+            xor dx, dx
+            mov ax, [cs:.requested_bytes]
+            mov cx, MEMORY_SMALLEST_UNIT
+            div cx
+
+            ; cx contains MEMORY_SMALLEST_UNIT
+            ; dx contains rest 
+            ; intialization of whole memory chunk is required, not only of the requested
+            ; bytes -> calculate rest to fill memory chunk
+            sub cx, dx ; -> Rest to fill the chunk
+            add cx, word [cs:.requested_bytes] ; Number of bytes to init
+        pop dx
+
         mov es, bx
         mov di, dx
-        mov cx, [cs:.requested_bytes]
         cld
         mov al, 0
         .init_allocated:
@@ -307,6 +323,8 @@ memory_allocate:
 ;   none
 ;-------------------------------------------------------------------------------
 memory_free:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+
     pusha
     pushf
     push ds
@@ -331,7 +349,7 @@ memory_free:
             mov cx, dx ; Save remainder from segment 
         pop dx
 
-        shl cx, 4 ; segment remainder needs to be multiplied with 16 because of the division above
+        shl cx, 4 ; segment remainder (offset) needs to be multiplied with 16 because of the division above
         add dx, cx ; add segment remainder to offset 
         jnc .no_increase_segment
         ; On carry increase segment count -> offset wrapped around
@@ -400,4 +418,18 @@ memory_free:
         popf
         popa
         iret
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Description
+;
+; input: 
+;   none
+;
+; output:
+;   none
+;-------------------------------------------------------------------------------
+;name:
+;    sti ; Allow hardware interrupts to occur while processing software interrupts
+;    iret/ret
 ;-------------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 ;-------------------------------------------------------------------------------
 ; MIT License
 ;
-; Copyright (c) 2020 Erukaron
+; Copyright (c) 2021 Erukaron
 ;
 ; Permission is hereby granted, free of charge, to any person obtaining a copy
 ; of this software and associated documentation files (the "Software"), to deal
@@ -48,5 +48,6 @@
 ;   none
 ;-------------------------------------------------------------------------------
 ;name:
-;    ret
+;    sti ; Allow hardware interrupts to occur while processing software interrupts
+;    iret/ret
 ;-------------------------------------------------------------------------------

@@ -156,6 +156,8 @@ display_set_blink_mode:
 ;   none
 ;-------------------------------------------------------------------------------
 display_switch_video_mode:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+
     push ax
 
     mov ah, VIDEOMODE_BIOS_ASCII_COLOR_80x25
@@ -196,6 +198,8 @@ display_switch_video_mode:
 ;   AL -> Video mode (0 : Textmode 80x25, 1 : Videomode 320x200)
 ;-------------------------------------------------------------------------------
 display_get_video_mode:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+
     cmp byte [cs:display_video_mode], VIDEOMODE_BIOS_ASCII_COLOR_80x25
     jnz .check_gfx_mode
     mov al, VIDEOMODE_ASCII_COLOR_80x25
@@ -222,6 +226,8 @@ display_get_video_mode:
 ;   none
 ;-------------------------------------------------------------------------------
 display_clear_screen:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+
     push es
     pusha
 
@@ -313,6 +319,8 @@ display_update_font:
 ;   none
 ;-------------------------------------------------------------------------------
 display_putch:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+
     cmp byte [cs:display_video_mode], VIDEOMODE_BIOS_GFX_320_200_COLOR
     je display_gfx_putch
 
@@ -480,6 +488,8 @@ display_putch:
 ;   none
 ;-------------------------------------------------------------------------------
 display_gfx_putch:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+
     pusha
     push es
 
@@ -770,6 +780,7 @@ display_gfx_update_cursor:
 ;   none
 ;-------------------------------------------------------------------------------
 display_print:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
     pusha 
 
     .exec:
@@ -801,6 +812,7 @@ display_print:
 ;   none
 ;-------------------------------------------------------------------------------
 display_write:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
     pusha
 
     ; Save current location
@@ -833,6 +845,7 @@ display_write:
 ;   none
 ;-------------------------------------------------------------------------------
 display_put_pixel:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
     pusha
     push es
 
@@ -883,6 +896,7 @@ display_put_pixel:
 ;   none
 ;-------------------------------------------------------------------------------
 display_prefix_print:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
     pusha 
 
     cmp al, 4
@@ -984,5 +998,6 @@ display_prefix_print:
 ;   none
 ;-------------------------------------------------------------------------------
 ;name:
+;    sti ; Allow hardware interrupts to occur while processing software interrupts
 ;    ret
 ;-------------------------------------------------------------------------------

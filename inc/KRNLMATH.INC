@@ -63,6 +63,8 @@
 ;           0b100: DX:AX smaller than CX:BX
 ;-------------------------------------------------------------------------------
 math_32_bit_operation:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+
     push bx
     push cx
 
@@ -131,4 +133,18 @@ math_32_bit_operation:
         pop cx
         pop bx
         iret
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Description
+;
+; input: 
+;   none
+;
+; output:
+;   none
+;-------------------------------------------------------------------------------
+;name:
+;    sti ; Allow hardware interrupts to occur while processing software interrupts
+;    iret/ret
 ;-------------------------------------------------------------------------------

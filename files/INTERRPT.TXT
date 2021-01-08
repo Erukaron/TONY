@@ -219,7 +219,7 @@ TONY interrupts:
         AX -> Number of bytes to reserve
     output:
         BX -> Segment
-        DX -> Offset
+        DX -> Last nibble: offset (with 16 byte untis, should always be zero)
         BX = DX = 0xffff -> not enough memory
 -------------------------------------------------
 0xb9
@@ -336,7 +336,10 @@ TONY interrupts:
 0xd2
     Checks if a string contains another string
     input:
-        ah -> 0 contains substring, 1 are strings equal
+        ah -> mode
+            0 contains substring 
+            1 are strings equal
+            2 ignore case
         ds:si -> String to be checked
         es:di -> Check string
     output:
@@ -369,6 +372,9 @@ TONY interrupts:
 0xd5
     Removes all white space characters from a string (space, tab, cr and lf)
     input: 
+        ah -> Mode
+            1: Remove all whitespace characters
+            2: Remove all multiple whitespace characters e.g. "   " -> " "
         ds:si -> string to remove white space characters from
     output:
         ds:si -> removed white space characters
@@ -399,6 +405,21 @@ TONY interrupts:
         cl -> Sector: (logical sector / sectors per track) + 1
         dh -> Head: (logical sector / sectors per track) MOD number of heads
         ch -> Track: logical sector / (sectors per track * number of heads)
+-------------------------------------------------
+0xe3
+    Convert a 16-bit string representation of a decimal
+    unsigned integer to an unsigned integer
+    input:
+        ds:si -> string representation of 16-bit unsigned int
+    output:
+        ax -> resulting integer
+-------------------------------------------------
+0xe4
+    Converts a number into printable hex format
+    input:
+        DL -> Number to transform to printable hex
+    output:
+        DX -> resulting printable ascii integer
 -------------------------------------------------
 
 -------------------------------------------------
@@ -432,6 +453,17 @@ TONY interrupts:
             0x01: File not found
             0x02: Not enough RAM
             0x04: File to large
+-------------------------------------------------
+0xf3
+    Execute COSIC Line
+    intput:
+        DH -> mode
+            0: direct mode (variable names are cloned)
+            1: sourcecode mode (variable names are read from source code)
+        DS:SI -> Line of COSIC Code
+    output:
+        AL -> Error code
+        AH -> Column number
 -------------------------------------------------
 0xff
     Software

@@ -43,6 +43,8 @@
 ;   ds:si -> Converted string
 ;-------------------------------------------------------------------------------
 convert_string_case:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+
     push si
 
     .loop:
@@ -90,6 +92,8 @@ convert_string_case:
 ;   dx -> (cluster - 2) * sectors per cluster (LBA)
 ;-------------------------------------------------------------------------------
 convert_cluster_lba:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+
     push cx
     push ax
 
@@ -118,6 +122,8 @@ convert_cluster_lba:
 ;   ch -> Track: logical sector / (sectors per track * number of heads)
 ;-------------------------------------------------------------------------------
 convert_lba_chs:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+
     mov ax, dx
     xor dx, dx ; prepare dx:ax for operation
     div word [cs:bpbSectorsPerTrack] 
@@ -141,6 +147,112 @@ convert_lba_chs:
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
+; Took straight from the Snowdrop OS project (file: string.asm) 
+; written by Sebastian Mihai, http://sebastianmihai.com
+; from which "the source code is fully available, without any restrictions on 
+; its usage and modification."
+;
+; Converts a 16-bit string representation of a decimal unsigned integer to an 
+; unsigned integer.
+;
+; input:
+;   DS:SI -> pointer to string representation of integer (zero-terminated)
+;
+; output:
+;   AX -> resulting integer
+;-------------------------------------------------------------------------------
+convert_unsigned_16bit_atoi:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+
+    push bx
+    push cx
+    push dx
+    push si
+    push di
+    
+    mov ax, 0                               ; 0 is default for bad values
+    cmp byte [ds:si], 0
+    je .string_unsigned_16bit_atoi_exit      ; NOOP when empty string
+    
+    mov cx, 0                               ; CX will hold intermediate results
+    mov bx, 1                               ; multiplier
+    
+    mov di, si
+.string_unsigned_16bit_atoi_go_to_units:
+    cmp byte [ds:di+1], 0                       ; is DS:DI on the units digit?
+    je .string_unsigned_16bit_atoi_accumulate    ; yes
+    inc di                                      ; no, move to the right
+    jmp .string_unsigned_16bit_atoi_go_to_units
+.string_unsigned_16bit_atoi_accumulate:
+    ; DS:DI now points to the units digit
+    mov al, byte [ds:di]                    ; AL := ASCII of digit
+    sub al, ASCII_0                         ; AL := digit value
+    mov ah, 0                               ; AX := digit value
+    mul bx                                  ; DX:AX := digit * multiplier
+    ; ASSUMPTION: DX=0, since the string contains a 16bit unsigned integers
+    add ax, cx                              ; AX := intermediate result
+    
+    cmp si, di                              ; have we just accumulated the
+                                            ; most significant digit?
+    je .string_unsigned_16bit_atoi_exit      ; yes, so we're done
+    dec di                                  ; no, move to the left
+    
+    mov cx, ax                              ; CX := intermediate result
+    
+    mov ax, bx                              ; AX := multiplier
+    mov bx, 10
+    mul bx                                  ; DX:AX := multiplier * 10
+    ; ASSUMPTION: DX=0, since the string contains a 16bit unsigned integers
+    mov bx, ax                              ; BX := multiplier * 10
+    jmp .string_unsigned_16bit_atoi_accumulate   ; process this digit
+.string_unsigned_16bit_atoi_exit:
+    pop di
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    iret
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Converts a number into printable hex format
+;
+; input:
+;   DL -> Number to transform to printable hex
+;
+; output:
+;   DX -> resulting printable ascii integer
+;-------------------------------------------------------------------------------
+convert_bin_ascii_hex:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+
+    mov dh, dl
+    shr dh, 4 ; set high nibble of dl to low nibble of dh
+    and dl, 0x0f ; delete high nibble of dl
+
+    cmp dl, 9
+    jg .dl_letter
+    add dl, 0x30 ; Offset for 0
+    jmp .dl_done
+    .dl_letter:
+    add dl, 'A' ; Offset for A
+    sub dl, 10 ; Offset for numerics
+    .dl_done:
+
+    cmp dh, 9
+    jg .dh_letter
+    add dh, 0x30 ; Offset for 0
+    jmp .dh_done
+    .dh_letter:
+    add dh, 'A' ; Offset for A
+    sub dh, 10 ; Offset for numerics
+    .dh_done:
+
+    .done:
+        iret
+;-----------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
 ; Description
 ;
 ; input: 
@@ -150,5 +262,6 @@ convert_lba_chs:
 ;   none
 ;-------------------------------------------------------------------------------
 ;name:
+;    sti ; Allow hardware interrupts to occur while processing software interrupts
 ;    iret / ret
 ;-------------------------------------------------------------------------------

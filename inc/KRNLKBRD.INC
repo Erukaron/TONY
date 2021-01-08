@@ -128,7 +128,7 @@ keyboard_set_intial_keymap:
     jmp .hang_loop
 
     .info_reading_keymap db "Reading keymap file ", 0
-    .critical_keymap_does_not_exist db "Keymap does not exist! System hung up!", 0
+    .critical_keymap_does_not_exist db "Keymap does not exist! System halt!", 0
 ;-------------------------------------------------------------------------------
 ; Updates the keyboard keymap
 ;
@@ -162,6 +162,8 @@ keyboard_update_keymap:
 ;   none
 ;-------------------------------------------------------------------------------
 keyboard_callback:
+    ;sti -> Do not reenable interrupts -> This is a hardware interrupt with priority
+
     pusha
     pushf
 
@@ -299,6 +301,8 @@ keyboard_callback:
 ;   AL -> character
 ;-------------------------------------------------------------------------------
 keyboard_getch:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+
     int 0x96
     cmp al, VIDEOMODE_ASCII_COLOR_80x25
     je .no_cursor
@@ -371,6 +375,8 @@ keyboard_getch:
 ;   none
 ;-------------------------------------------------------------------------------
 keyboard_readln:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+
     pusha
 
     dec cx ; terminator
@@ -438,6 +444,8 @@ keyboard_readln:
 ;   al = 0xff: key not in current keymap
 ;-------------------------------------------------------------------------------
 keyboard_is_function_key_pressed:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+
     push dx
     push cx
     push bx
@@ -508,6 +516,7 @@ keyboard_is_function_key_pressed:
 ;   none
 ;-------------------------------------------------------------------------------
 ;name:
+;    sti ; Allow hardware interrupts to occur while processing software interrupts
 ;    iret / ret
 ;-------------------------------------------------------------------------------
 

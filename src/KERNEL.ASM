@@ -95,8 +95,24 @@ kernel_setup:
     mov bx, _kernel_test_gfx
     call kernel_install_interrupt
 
-    ; adjust kernel settings
-    call process_config_file
+    ; Check if file exists
+    mov si, kernel_config_file
+    int 0xc1 ; Get file size
+    cmp ax, -1 ; file does not exist
+    jz .skip_config_file
+        ; adjust kernel settings
+        call process_config_file
+        jmp .after_config_file
+    .skip_config_file:
+        push si
+            mov al, 1
+            mov si, .warn_no_kernel_config
+            int 0x97
+        pop si
+
+        jmp .after_config_file
+    .warn_no_kernel_config db "Kernel configuration skipped! Using defaults.", ASCII_CR, ASCII_LF, 0  
+    .after_config_file:
 
     ; read keyboard file
     mov si, keymap_file
@@ -106,7 +122,7 @@ kernel_setup:
     mov ah, FUNC_KEY_F8
     int 0xb2
     cmp al, 0x01
-    je .after_gfx_mode
+    je .skip_gfx_mode
     ; check if font file exists
     mov si, font_file
     int 0xc1
@@ -143,11 +159,23 @@ kernel_setup:
         pop si
 
         int 0x91
+        call crlf
+
+        jmp .after_gfx_mode
+    .skip_gfx_mode:
+        push si
+            mov al, 1
+            mov si, .warn_no_gfx_mode
+            int 0x97
+        pop si
 
         jmp .after_gfx_mode
     .info_reading_font_file db "Reading font file: ", 0
     .error_no_font_file db "Font file does not exist! Graphics mode disabled! : ", 0
+    .warn_no_gfx_mode db "GFX mode not enabled!", ASCII_CR, ASCII_LF, 0
     .after_gfx_mode:
+
+    call cosic_init
 
     ; check if shell exists
     mov si, shell_file
@@ -197,7 +225,7 @@ kernel_setup:
 
         ; Wait 5 seconds befor starting the mlt
         mov ax, 5000
-        int 0x81
+        ;int 0x81
 
         jmp .after_shell
     .info_reading_shell_file db "Loading shell: ", 0
@@ -206,23 +234,9 @@ kernel_setup:
     .empty_shell_cmd db 0
     .after_shell:
 
-    .loop1:
-    mov cx, 256
-    mov ax, cs
-    mov es, ax
-    mov di, stringdata
-    int 0xb1
-
-    mov ds, ax
-    mov si, stringdata
-    int 0x91
-    jmp .loop1
-
-    stringdata times 256 db 0
-    ; -------------------Testcode
-
     ; set default video mode and start mlt
     call display_restore_default_kernel_video_mode
+
     ; Start mlt
     int 0xf0
 
@@ -443,6 +457,14 @@ install_convert:
     mov bx, convert_lba_chs
     call kernel_install_interrupt
 
+    mov al, 0xe3
+    mov bx, convert_unsigned_16bit_atoi
+    call kernel_install_interrupt
+
+    mov al, 0xe4
+    mov bx, convert_bin_ascii_hex
+    call kernel_install_interrupt
+
     ret
 
 install_misc:
@@ -460,6 +482,10 @@ install_misc:
 
     mov al, 0xf2
     mov bx, misc_start_com
+    call kernel_install_interrupt
+
+    mov al, 0xf3
+    mov bx, cosic_execute
     call kernel_install_interrupt
 
     ret
@@ -657,17 +683,11 @@ process_config_file:
     push cs
     pop ds
 
+    mov al, 0
+    mov si, .info_reading_config
+    int 0x97
+
     mov si, kernel_config_file
-    int 0xc1 ; Get file size
-    cmp ax, -1 ; file does not exist
-    jz .done
-
-    push si
-        mov al, 0
-        mov si, .info_reading_config
-        int 0x97
-    pop si
-
     int 0xc2 ; Open file
     mov [cs:.file_segment], bp
     mov [cs:.file_offset], bx
@@ -699,7 +719,10 @@ process_config_file:
         push word [cs:.str_segment]
         pop ds
         mov si, [cs:.str_offset]
-        int 0xd5
+        push ax
+            mov ah, 1
+            int 0xd5
+        pop ax
 
         ; Split string on = sign
         mov ah, 0b10 ; termination of the first and second string
@@ -752,7 +775,7 @@ process_config_file:
             jmp .loop
     .exit_loop:
 
-
+    ;xchg bx, bx
     mov bp, [cs:.file_segment]
     mov bx, [cs:.file_offset]
     int 0xc3 ; Close file
@@ -889,6 +912,8 @@ process_config_file:
 ; Draw rectangles on the screen to test colors
 ;-------------------------------------------------------------------------------
 _kernel_test_gfx:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+
     mov cx, 8
     mov dl, 0
     .draw_rectangles:
@@ -943,4 +968,5 @@ _kernel_test_gfx:
 %include "KRNLCVRT.INC"
 %include "KRNLMISC.INC"
 %include "KRNLDOS.INC"
+%include "KRNLCSIC.INC"
 ;-------------------------------------------------------------------------------

@@ -47,5 +47,69 @@
     Iret kehrt zum Aufruf von Interrupt zur Ausführung von COM zurück, da dort kein Iret ausgeführt wird
 [ ] Interrupt exceptions umprogrammieren -> Fehlermeldung geben / aktuelles Programm beenden
     Ab Interrupt exception 8 (auch hardware interrupt) im pic prüfen, ob hardware interrupt, falls nicht exception
-[ ] Warnung ausgeben, wenn Datei aus Kernel cfg nicht gefunden -> ggf. kein Grafikmodus starten 
+[x] Warnung ausgeben, wenn Datei aus Kernel cfg nicht gefunden -> ggf. kein Grafikmodus starten 
 Bei Fehlender Keyboard Datei halten
+[ ] Mausinterrupts bc - bf -> Position lesen (Tasten + Posi), setzen (Posi), Hinzufügen / entfernen von Aufruf  einer Funktion bei bestimmtem Event, Einstellungen (Cursor aktivieren/deaktivieren, Geschwindigkeit, etc.)
+[ ] Eventanmeldung für Keyboard
+[ ] Eventanmeldung für Timer
+[ ] Interpretierte Sprache (COBOL + BASIC = COSIC)
+    Befehlssatz:
+        ; Kommentar
+        add <var> to <var> (giving <var>/display) ; display gibt Ergebnis aus
+        sub <var> from <var> (giving <var>/display) ; display gibt Ergebnis aus
+        multiply <var> by <var> (giving <var>/display) ; display gibt Ergebnis aus
+        divide <var> by <var> (giving <var>/display) ; display gibt Ergebnis aus
+        move <var> to <var>
+        cast $<var> to %<var> (giving %<var>) ; str2int -> giving %<var> gibt Status an
+        delete <var> ; deallokiert den durch <var> belegten speicher
+        <label> (param <var>( <var>))
+        call <label/pointer> (param <var>( <var>)) (accept <var>) ; accept ist für Rückgabe ; Pointer nur ohne Übergabe und Rückgabe
+        goto <label/pointer> ; Goto label nur ohne Übergabe
+        return <var> ; von call -> Schreibt var in Speicherbereich und gibt adresse zurück, falls akzeptiert wird, wird die Variable in var des Aufrufes geschrieben, ansonsten verworfen
+        if <bool expr> then (multiline)
+        elseif <bool expr> then (multiline)
+        else
+        end
+        while <bool expr> do
+        end
+        for %<var> to <number> (step <number>)
+        end
+        display <string/number> (+ <string/number> ...) (crlf)
+        input $/%<var> (<string>)
+        waitkey <keycode>
+        random to %<var> ; Bestimmt die größe von var und füllt jede zulässige stelle mit zufallswerten
+        append <var> to $<var>
+        fopen <handle> with <string>
+        fclose <handle>
+        fget <handle> (to <var> -> skip 1 byte)
+        fput <var> to <handle>
+        fread <handle> for %<var> (to <var> -> skip %var bytes)
+        fwrite <var> to <handle>
+        read <pointer> for %<var> to <var>
+        write <var> to <pointer>
+        locate <pointer> to %<var> ; Setzt den Pointer auf die Speicheradresse var
+        assign <pointer> to <var> ; Setzt var auf den Inhalt von <pointer>
+        execute $<var> (param <var>( <var>)) ; Führt das Programm $var mit Parameter var aus
+        exit ; Programm
+        #include zeichenkette
+
+        <keycode>: FUNC_KEY_CODES und KEYBOARD_MAP
+        <label>: :zeichenkette
+        <handle>: ~zeichenkette
+        <pointer>: *zeichenkette
+        <const>: Stringliteral / Ziffernliteral
+        <string>: "abc" / $<var>
+        <number>: 123 / %<var>    :    im BCD Format
+        (bei intialisieren von Variablen)
+        <var>: $str size <zeichen> ODER assign <string>
+        <var>: %no size <ziffern> ODER assign <number>
+        <bool expr>: <bool op> <var/const> <op> <var/const> (<bool op> ...)
+        <op>: ==, >, <, >=, <=
+        <bool op> -> not, or, and, xor, nand, nor, xnor
+
+        Listen anlegen für labels, handles, $vars und %vars
+        $vars werden mit ihrer Länge, nicht über 0 terminiert
+        (multiline) werden mit terminator (do/then) abgeschlossen
+            -> In Interpreter wird Befehl entgegengenommen, bis zu terminator
+            -> In Interpreter
+
