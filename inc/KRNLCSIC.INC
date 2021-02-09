@@ -76,6 +76,7 @@ COSIC_ERROR_EXPECTED_NUMERIC         equ 0x19
 COSIC_ERROR_EXPECTED_PERCENT         equ 0x1a
 COSIC_ERROR_EXPECTED_NUMERIC_LITERAL equ 0x1b
 COSIC_ERROR_EXPECTED_ASSIGN_OR_SIZE  equ 0x1c
+COSIC_ERROR_EXPECTED_NUMERIC_VAR     equ 0x1d
 ;COSIC_ERROR_                         equ 0x20
 ;-------------------------------------------------------------------------------
 
@@ -287,7 +288,7 @@ cosic_execute:
     mov ah, 2 ; check if strings are equal caseinsensitive
     mov di, cosic_inst_add
     int 0xd2 ; Check if strings are equal
-    ;jnc .add
+    jnc .add
 
     mov ah, 2 ; check if strings are equal caseinsensitive
     mov di, cosic_inst_sub
@@ -304,10 +305,12 @@ cosic_execute:
 
     .add:
         call cosic_add
+        or [cs:.error_code], ax 
         jmp .done
 
     .sub: 
         call cosic_sub
+        or [cs:.error_code], ax 
         jmp .done
 
     .error_instruction_not_implemented:
@@ -799,15 +802,393 @@ cosic_init_numeric:
 ; Adds two numbers together optionally giving the result to a third one or 
 ; printing it to the display
 ;
+; add <number literal>/%<var> to <number literal>/%<var>
+; add <number literal>/%<var> to <number literal>/%<var> giving %<var>
+; add <number literal>/%<var> to <number literal>/%<var> giving display
+;
 ; input: 
-;   es:bx -> parameters
+;   ds:cosic_instruction_argument -> parameters
 ;
 ; output:
 ;   al -> Error code
 ;   ah -> Column number
 ;-------------------------------------------------------------------------------
 cosic_add:
-    ret
+    xchg bx, bx
+    ; Split operand 1 from rest of parameters
+    xor ax, ax
+
+    mov word [cs:.value_2_segment], 0xffff
+    mov word [cs:.value_2_offset], 0xffff
+    mov word [cs:.receiver_segment], 0xffff
+    mov word [cs:.receiver_offset], 0xffff
+
+    ; base contains "add"
+    ; argument contains rest
+    ; "add" is obvious -> overwrite base with rest -> 1. numeric is then located at argument
+    mov bl, ASCII_SP
+    mov si, cosic_instruction_argument
+    call cosic_split_into_base
+    ; base contains "to <numeric2> (giving %<var>/display)"
+    ; argument contains <numeric1>
+
+    ; check if string in base starts with "to "
+    mov bl, [cs:cosic_inst_to]
+    cmp [cs:cosic_instruction_base], bl
+    jnz .error_to
+    mov bl, [cs:cosic_inst_to + 1]
+    cmp [cs:cosic_instruction_base + 1], bl
+    jnz .error_to
+    mov bl, ASCII_SP
+    cmp [cs:cosic_instruction_base + 2], bl
+    jnz .error_to
+
+    ; base contains "to <numeric2> (giving %<var>/display)"
+    ; argument contains <numeric1>
+    ; split (base + 3) -> ignoring "to ", at space into value_2
+    mov si, cosic_instruction_base
+    add si, 3
+    push ax
+        ; check size
+        int 0xd0
+        mov [cs:.value_2_size], ax
+
+        ; create string with this size and split one part into it 
+        int 0xb8
+        mov [cs:.value_2_segment], bx
+        mov [cs:.value_2_offset], dx
+
+        ; Split ds:cosic_instruction_base + 3 (si) into variable
+        push bx
+        pop es
+        mov di, dx
+        mov ah, 2 ; case insensitive
+        mov al, ASCII_SP
+        mov cx, [cs:.value_2_size]
+        int 0xd4 ; Split string
+    pop ax
+    ; base contains "to <numeric2>"
+    ; argument contains <numeric1>
+    ; value_2 contains giving %<var>/display (if entered from the user)
+
+    ; check numeric in argument
+    mov si, cosic_instruction_argument
+    call cosic_is_numeric
+    cmp ch, 0
+    jz .error_numeric
+    cmp ch, 1
+    jz .check_numeric1_literal
+        mov byte [cs:.numeric1_var], TRUE
+        mov [cs:.numeric1_segment], bx
+        mov [cs:.numeric1_offset], dx
+        jmp .check_numeric1_finished
+    .check_numeric1_literal:
+        mov byte [cs:.numeric1_var], FALSE
+        mov [cs:.numeric1_segment], ds
+        mov [cs:.numeric1_offset], si
+    .check_numeric1_finished:
+
+    ; check numeric in base
+    mov si, cosic_instruction_base + 3 ; ignoring "to "
+    call cosic_is_numeric
+    cmp ch, 0
+    jz .error_numeric
+    cmp ch, 1
+    jz .check_numeric2_literal
+        mov byte [cs:.numeric2_var], TRUE
+        mov [cs:.numeric2_segment], bx
+        mov [cs:.numeric2_offset], dx
+        jmp .check_numeric2_finished
+    .check_numeric2_literal:
+        mov byte [cs:.numeric2_var], FALSE
+        mov [cs:.numeric2_segment], ds
+        mov [cs:.numeric2_offset], si
+    .check_numeric2_finished:
+
+    ; check if value_2 contains anything
+    mov byte [cs:.redirect_result], 0 ; assume no redirection
+    push ds
+        push word [cs:.value_2_segment]
+        pop ds
+        mov si, [cs:.value_2_offset]
+
+        cmp byte [ds:si], 0
+    pop ds
+    jz .skip_redirect_part
+
+    ; base contains "to <numeric2>"
+    ; argument contains <numeric1>
+    ; value_2 contains giving %<var>/display (if entered from the user)
+    ; split value_2 into receiver -> receiver will be %<var>/display
+    push ds
+        push ax
+            push word [cs:.value_2_segment]
+            pop ds
+            mov si, [cs:.value_2_offset]
+
+            ; check size
+            int 0xd0
+            mov [cs:.receiver_size], ax
+
+            ; create string with this size and split one part into it 
+            int 0xb8
+            mov [cs:.receiver_segment], bx
+            mov [cs:.receiver_offset], dx
+
+            ; Split
+            push bx
+            pop es
+            mov di, dx
+            mov ah, 2 ; case insensitive
+            mov al, ASCII_SP
+            mov cx, [cs:.receiver_size]
+            int 0xd4 ; Split string
+        pop ax
+
+        ; check if value_2 contains "giving"
+        push ax
+            mov ah, 2
+            push cs
+            pop es
+            mov di, cosic_inst_giving
+            int 0xd2
+        pop ax
+    pop ds
+    jc .error_giving
+
+    ; check if redirection into var or display 
+    ; receiver contains %<var>/display (if entered from the user)
+    push ds
+        push word [cs:.receiver_segment]
+        pop ds
+        mov si, [cs:.receiver_offset]
+
+        mov byte [cs:.redirect_result], 2 ; assume redirection to display
+
+        ; check if receiver contains "display"
+        push ax
+            mov ah, 2
+            push cs
+            pop es
+            mov di, cosic_inst_display
+            int 0xd2
+        pop ax
+        jnc .finish_redirect_check
+
+        ; no redirection to display -> redirect target must be a numeric variable
+        call cosic_is_numeric
+        cmp ch, 2
+        jnz .error_redirect_numeric
+
+        mov byte [cs:.redirect_result], 1 ; redirect variable
+        mov [cs:.target_list_element_segment], bx
+        mov [cs:.target_list_element_offset], dx
+    .finish_redirect_check:
+    pop ds
+
+    .skip_redirect_part:
+
+    ; base contains "to <numeric2>"
+    ; argument contains <numeric1>
+    ; .redirect_result contains 0 for no redirection, 1 for redirection to a var and 2 for redirection to the screen
+    ;       for 1: target segment and offset are stored at .target_list_element
+
+    ; check number of digits of numeric1
+    mov cl, [cs:.numeric1_var]
+    mov bx, [cs:.numeric1_segment]
+    mov dx, [cs:.numeric1_offset]
+    call .get_digits
+    mov [cs:.numeric1_digits], ch
+    mov [cs:.numeric1_is_negative], cl
+    shl cl, 1
+    or cl, [cs:.numeric1_var]
+    cmp cl, 0b10 ; num1 is literal and negative
+    jnz .done_check_digits_num1
+        ; Offset of numeric1 needs to be adjusted -> it currently contains the "-" sign, but it is supposed to be the plain number
+        inc word [cs:.numeric1_offset]
+    .done_check_digits_num1:
+
+    ; check number of digits of numeric2
+    mov cl, [cs:.numeric2_var]
+    mov bx, [cs:.numeric2_segment]
+    mov dx, [cs:.numeric2_offset]
+    call .get_digits
+    mov [cs:.numeric2_digits], ch
+    mov [cs:.numeric2_is_negative], cl
+    shl cl, 1
+    or cl, [cs:.numeric2_var]
+    cmp cl, 0b10 ; num2 is literal and negative
+    jnz .done_check_digits_num2
+        ; Offset of numeric2 needs to be adjusted -> it currently contains the "-" sign, but it is supposed to be the plain number
+        inc word [cs:.numeric2_offset]
+    .done_check_digits_num2:
+
+    ; create variable with enough space to perform calculation based upon the bigger number of digits
+    push ax
+        xor ax, ax
+        mov al, ch
+
+        cmp ch, [cs:.numeric1_digits]
+        jae .allocate_calc_var
+            mov al, [cs:.numeric1_digits]
+        .allocate_calc_var:
+        int 0xb8
+        cmp bx, 0xffff
+        jnz .calc_var_write_pointer
+
+        pop ax
+        or al, COSIC_ERROR_MEMORY_LIMIT
+        mov ah, 0
+        jmp .done
+
+        .calc_var_write_pointer:
+        mov [cs:.calc_var_segment], bx
+        mov [cs:.calc_var_offset], dx
+    pop ax
+
+    xchg bx, bx
+    mov bp, .calculation_routine_data_block
+    call cosic_calculation_routine_add
+
+     ;ToDo:
+    ; check for redirection and write result accordingly
+
+    ; deallocate variable for calculation
+
+    jmp .done
+
+    ; input:
+    ;   cl -> 0: literal, 1: variable
+    ;   bx -> Segment of var/literal
+    ;   dx -> Offset of var/literal
+    ; output:
+    ;   ch -> Number of digits
+    ;   cl -> 0: if positive, 1: if negative
+    .get_digits:
+        cmp cl, TRUE
+        jz .get_digits_var
+            xor cx, cx
+
+            ; Get digits from literal
+            push ax
+            push ds
+            push si
+                mov ds, bx
+                mov si, dx
+
+                int 0xd0
+                mov ch, al
+
+                cmp byte [ds:si], ASCII_MINUS
+            pop si
+            pop ds
+            pop ax
+
+            jnz .get_digits_done
+            mov cl, TRUE
+            dec ch ; -> skip "-"" sign
+        jmp .get_digits_done
+        .get_digits_var:
+            xor cx, cx
+
+            ; Get digits from var
+            push ds
+            push si
+                mov ds, bx
+                mov si, dx
+                mov ch, [ds:si + COSIC_LIST_INTVARS_DIGITS_OFFSET]
+
+                test byte [ds:si + COSIC_LIST_FLAG_OFFSET], 1
+                jz .get_digits_var_no_negative
+                    mov cl, TRUE
+                .get_digits_var_no_negative:
+            pop si
+            pop ds
+        .get_digits_done:
+            ret
+
+    .error_numeric:
+        or al, COSIC_ERROR_EXPECTED_NUMERIC
+        mov ah, 0
+        jmp .done
+
+    .error_to:
+        or al, COSIC_ERROR_EXPECTED_TO
+        mov ah, 0
+        jmp .done
+
+    .error_giving:
+        or al, COSIC_ERROR_EXPECTED_GIVING
+        mov ah, 0
+        jmp .done
+
+    .error_redirect_numeric:
+        pop ds
+        or al, COSIC_ERROR_EXPECTED_NUMERIC_VAR
+        mov ah, 0
+        jmp .done
+
+    .done:
+        cmp word [cs:.value_2_segment], 0xffff
+        jz .no_dealloc_value_2
+        cmp word [cs:.value_2_offset], 0xffff
+        jz .no_dealloc_value_2
+            ; deallocate used string
+            push ax
+            push bx
+            push dx
+                mov bx, [cs:.value_2_segment]
+                mov dx, [cs:.value_2_offset]
+                mov ax, [cs:.value_2_size]
+                int 0xb9
+            pop dx
+            pop bx
+            pop ax
+
+        .no_dealloc_value_2:
+
+        cmp word [cs:.receiver_segment], 0xffff
+        jz .no_dealloc_receiver
+        cmp word [cs:.receiver_offset], 0xffff
+        jz .no_dealloc_receiver
+            ; deallocate used string
+            push ax
+            push bx
+            push dx
+                mov bx, [cs:.receiver_segment]
+                mov dx, [cs:.receiver_offset]
+                mov ax, [cs:.receiver_size]
+                int 0xb9
+            pop dx
+            pop bx
+            pop ax
+
+        .no_dealloc_receiver:
+        ret
+
+    .value_2_size dw 0
+    .value_2_segment dw 0
+    .value_2_offset dw 0
+    .receiver_size dw 0
+    .receiver_segment dw 0
+    .receiver_offset dw 0
+    .redirect_result db 0 ; 0: no redirection, 1: redirect to var, 2: redirect to display
+    .target_list_element_segment dw 0
+    .target_list_element_offset dw 0
+
+    .calculation_routine_data_block:
+        .numeric1_var db FALSE
+        .numeric1_is_negative db FALSE
+        .numeric1_segment dw 0
+        .numeric1_offset dw 0
+        .numeric1_digits db 0
+        .numeric2_var db FALSE
+        .numeric2_is_negative db FALSE
+        .numeric2_segment dw 0
+        .numeric2_offset dw 0
+        .numeric2_digits db 0
+        .calc_var_segment dw 0
+        .calc_var_offset dw 0
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
@@ -816,7 +1197,7 @@ cosic_add:
 ; sub <number> from <number> (giving %<var>/display)
 ;
 ; input: 
-;   es:bx -> parameters
+;   ds:cosic_instruction_argument -> parameters
 ;
 ; output:
 ;   al -> Error code
@@ -824,6 +1205,257 @@ cosic_add:
 ;-------------------------------------------------------------------------------
 cosic_sub:
     ret
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Adds two numbers together, writing the result into a calculation variable
+;
+; input:
+;   bp -> data block for calculation routine
+;
+; output:
+;   bl -> 0 if result positive, 1 if result negative
+;   Result written to calculation variable in data block
+;-------------------------------------------------------------------------------
+COSIC_CALC_ROUTINE_ADD_DATA_BLOCK_NUM1_VAR_OFFSET       equ 0
+COSIC_CALC_ROUTINE_ADD_DATA_BLOCK_NUM1_NEG_OFFSET       equ 1
+COSIC_CALC_ROUTINE_ADD_DATA_BLOCK_NUM1_SEG_OFFSET       equ 2
+COSIC_CALC_ROUTINE_ADD_DATA_BLOCK_NUM1_OFF_OFFSET       equ 4
+COSIC_CALC_ROUTINE_ADD_DATA_BLOCK_NUM1_DIG_OFFSET       equ 6
+COSIC_CALC_ROUTINE_ADD_DATA_BLOCK_NUM2_VAR_OFFSET       equ 7
+COSIC_CALC_ROUTINE_ADD_DATA_BLOCK_NUM2_NEG_OFFSET       equ 8
+COSIC_CALC_ROUTINE_ADD_DATA_BLOCK_NUM2_SEG_OFFSET       equ 9
+COSIC_CALC_ROUTINE_ADD_DATA_BLOCK_NUM2_OFF_OFFSET       equ 11
+COSIC_CALC_ROUTINE_ADD_DATA_BLOCK_NUM2_DIG_OFFSET       equ 13
+COSIC_CALC_ROUTINE_ADD_DATA_BLOCK_CALC_SEG_OFFSET       equ 14
+COSIC_CALC_ROUTINE_ADD_DATA_BLOCK_CALC_OFF_OFFSET       equ 16
+;-------------------------------------------------------------------------------
+cosic_calculation_routine_add:
+    ;ToDo: Problem: Bei Verwendung von Variablen, wird die Zahl im BCD Format gespeichert (eine Ziffer pro Nibble) -> Außerdem wird die Ziffer nicht in num1 gespeichert, sondern der gesamte Datentyp
+    ;         Bei Literalen wird jedoch das Ascii Zeichen pro Byte gespeichert -> Literal in bcd konvertieren (Funktion)?
+    pusha
+    push ds
+    push es
+
+    ;mov [cs:.datablock_offset], bp
+    
+    ; copy value of num1 to calc var
+    xor cx, cx
+    mov cl, [cs:bp + COSIC_CALC_ROUTINE_ADD_DATA_BLOCK_NUM1_DIG_OFFSET]
+    ; Numeric 1 segment and offset
+    push word [cs:bp + COSIC_CALC_ROUTINE_ADD_DATA_BLOCK_NUM1_SEG_OFFSET]
+    pop ds
+    mov si, [cs:bp + COSIC_CALC_ROUTINE_ADD_DATA_BLOCK_NUM1_OFF_OFFSET]
+    ; Calc var segment and offset
+    push word [cs:bp + COSIC_CALC_ROUTINE_ADD_DATA_BLOCK_CALC_SEG_OFFSET]
+    pop es
+    mov di, [cs:bp + COSIC_CALC_ROUTINE_ADD_DATA_BLOCK_CALC_OFF_OFFSET]
+    push ax
+        cld
+        .copy_num1_to_calc:
+            lodsb
+            stosb
+        loop .copy_num1_to_calc
+    pop ax
+
+    ; di is now set to 1 byte after the calculation var
+    dec di
+    ; di is now set to the lowest number of the calculation var
+
+
+    ; check calc (num1) var negative
+    cmp byte [cs:bp + COSIC_CALC_ROUTINE_ADD_DATA_BLOCK_NUM1_NEG_OFFSET], FALSE
+    jz .num1_positive
+    .num1_negative:
+        mov bl, 1 ; assume result will be negative
+
+        ; check num2 negative
+        cmp byte [cs:bp + COSIC_CALC_ROUTINE_ADD_DATA_BLOCK_NUM2_NEG_OFFSET], FALSE
+        jz .num1_negative_num2_positive
+        .num1_negative_num2_negative:
+            ; add numbers in bcd
+            jmp .add_numbers
+        jmp .done
+
+        .num1_negative_num2_positive:
+            ; subtract numbers in bcd
+            ; set calc negative flag to false (positive) if num2 > abs(num1)
+            jmp .sub_num2
+    jmp .done
+
+    .num1_positive:
+        mov bl, 0 ; assume result will be positive
+
+        ; check num2 negative
+        cmp byte [cs:bp + COSIC_CALC_ROUTINE_ADD_DATA_BLOCK_NUM2_NEG_OFFSET], FALSE
+        jz .num1_positive_num2_positive
+        .num1_positive_num2_negative:
+            ; subtract numbers in bcd
+            ; set calc negative flag to true (negative) if num2 > abs(num1)
+            jmp .sub_num2
+        jmp .done
+
+        .num1_positive_num2_positive:
+            ; add numbers in bcd
+            jmp .add_numbers
+    jmp .done
+    
+    .add_numbers:
+        ; es:di is set to the lowest number of the calculation var
+        ; set ds:si to the lowest number of num2
+        push word [cs:bp + COSIC_CALC_ROUTINE_ADD_DATA_BLOCK_NUM2_SEG_OFFSET]
+        pop ds
+        mov si, [cs:bp + COSIC_CALC_ROUTINE_ADD_DATA_BLOCK_NUM2_OFF_OFFSET]
+
+        xor cx, cx
+        mov cl, [cs:bp + COSIC_CALC_ROUTINE_ADD_DATA_BLOCK_NUM2_DIG_OFFSET]
+
+        add si, cx ; 1 byte after num2
+        dec si 
+
+        mov byte [cs:.carry_on_add], FALSE
+
+        .add_loop:
+            mov ah, [es:di]
+            mov al, [ds:si]
+            and ah, 0x0f
+            and al, 0x0f
+            add ah, al
+            cmp byte [cs:.carry_on_add], TRUE
+            jnz .no_add_carry
+                add ah, 1 ; carry 1 from the previous calculation
+            .no_add_carry:
+            cmp ah, 9
+            jg .add_loop_carry
+                ; no carry -> next digit
+                mov byte [cs:.carry_on_add], FALSE
+                mov [es:di], ah
+                dec di
+                dec si
+                loop .add_loop
+                jmp .add_loop_done
+            .add_loop_carry:
+                sub ah, 10
+                mov byte [cs:.carry_on_add], TRUE
+                mov [es:di], ah
+                dec di
+                dec si
+        loop .add_loop
+        .add_loop_done:
+
+        .add_carry_loop:
+            cmp byte [cs:.carry_on_add], FALSE
+            jz .add_carry_loop_done
+
+            ; There are no characters left for num2 -> Carry only occurs, if there was a 9 in the calculation var
+            mov ah, [es:di]
+            and ah, 0x0f
+            add ah, 1
+            cmp ah, 9 ; test if there is another carry
+            ja .add_carry_loop_another_round
+                mov byte [cs:.carry_on_add], FALSE
+                mov [es:di], ah
+                dec di
+                jmp .add_carry_loop_done
+            .add_carry_loop_another_round:
+                sub ah, 10
+                mov byte [cs:.carry_on_add], TRUE
+                mov [es:di], ah
+                dec di
+                jmp .add_carry_loop
+        .add_carry_loop_done:
+
+        jmp .done
+
+    .sub_num2:
+        ; es:di is set to the lowest number of the calculation var
+        ; set ds:si to the lowest number of num2
+        push word [cs:bp + COSIC_CALC_ROUTINE_ADD_DATA_BLOCK_NUM2_SEG_OFFSET]
+        pop ds
+        mov si, [cs:bp + COSIC_CALC_ROUTINE_ADD_DATA_BLOCK_NUM2_OFF_OFFSET]
+
+        xor cx, cx
+        mov cl, [cs:bp + COSIC_CALC_ROUTINE_ADD_DATA_BLOCK_NUM2_DIG_OFFSET]
+
+        add si, cx ; 1 byte after num2
+        dec si 
+
+        mov byte [cs:.carry_on_sub], FALSE
+
+        .sub_loop:
+            mov ah, [es:di]
+            mov al, [ds:si]
+            and ah, 0x0f
+            and al, 0x0f
+            sub ah, al
+            cmp byte [cs:.carry_on_sub], TRUE
+            jnz .no_sub_carry
+                sub ah, 1 ; carry 1 from the previous calculation
+            .no_sub_carry:
+            test ah, 0xf0
+            jnz .sub_loop_carry
+                ; no carry -> next digit
+                mov byte [cs:.carry_on_sub], FALSE
+                mov [es:di], ah
+                dec di
+                dec si
+                loop .sub_loop
+                jmp .sub_loop_done
+            .sub_loop_carry:
+                add ah, 10
+                mov byte [cs:.carry_on_sub], TRUE
+                mov [es:di], ah
+                dec di
+                dec si
+        loop .sub_loop
+        .sub_loop_done:
+
+        .sub_carry_loop:
+            cmp byte [cs:.carry_on_sub], FALSE
+            jz .sub_carry_loop_done
+
+            ; There are no characters left for num2 -> Carry only occurs, if there was a 0 in the calculation var
+            mov ah, [es:di]
+            and ah, 0x0f
+            sub ah, 1
+            test ah, 0xf0 ; test if there is another carry
+            jnz .sub_carry_loop_another_round
+                mov byte [cs:.carry_on_sub], FALSE
+                mov [es:di], ah
+                dec di
+                jmp .sub_carry_loop_done
+            .sub_carry_loop_another_round:
+                add ah, 10
+                mov byte [cs:.carry_on_sub], TRUE
+                mov [es:di], ah
+                dec di
+                jmp .sub_carry_loop
+        .sub_carry_loop_done:
+
+        mov ch, [cs:bp + COSIC_CALC_ROUTINE_ADD_DATA_BLOCK_NUM2_DIG_OFFSET]
+        mov cl, [cs:bp + COSIC_CALC_ROUTINE_ADD_DATA_BLOCK_NUM1_DIG_OFFSET]
+        ; check if num2 > num1
+        cmp ch, cl
+        jb .done ; if num2 fewer digits than num1 -> bl is correcot
+        ja .flip_sign ; num2 more digits than num1 -> flip bl
+
+        cmp byte [cs:.carry_on_sub], FALSE
+        jz .done ; num 2 lesser than calculation var -> bl correct
+
+        .flip_sign:
+            xor bl, 1 ; flip negative sign for result, if num2 > calculation var
+
+        jmp .done
+
+    .done:
+        pop es
+        pop ds
+        popa
+        ret 
+
+    ;.datablock_offset dw 0
+    .carry_on_add db FALSE
+    .carry_on_sub db FALSE
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
@@ -1365,7 +1997,7 @@ cosic_is_numeric:
     call cosic_is_numeric_literal
     jc .done
 
-    mov ch, 2 ; numeric variable
+    mov ch, 0 ; assume its not a numeric var
     push si
     push cx
         mov ch, COSIC_LIST_TYPE_INTVAR
@@ -1376,6 +2008,7 @@ cosic_is_numeric:
     cmp bx, 0xffff
     jz .done
 
+    ; if var was found, set var code
     mov ch, 2
 
     .done:

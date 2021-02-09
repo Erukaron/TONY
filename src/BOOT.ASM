@@ -43,9 +43,23 @@ jmp start
 start:
     cli ; Disable interrups while segments are set up
 
-    mov ax, BOOT_SEGMENT
+    ; copy bootloader to 0x40000
+    push BOOT_SEGMENT
+    pop ds
+    mov si, BOOT_OFFSET
+    mov di, BOOT_COPY_OFFSET
+    push word BOOT_COPY_SEGMENT
+    pop es
+    mov cx, 512
+    cld
+    rep movsb
+    jmp BOOT_COPY_SEGMENT:boot_loader_ready
+
+boot_loader_ready:
+    mov ax, BOOT_COPY_SEGMENT
     mov ds, ax
-    mov es, ax
+    xor si, si
+    xor di, di
 
     mov ax, STACK_SEGMENT
     mov ss, ax

@@ -50,6 +50,7 @@ kernel_config_file db "KERNEL.CFG", 0
 ;-------------------------------------------------------------------------------
 ; !!! Vars need to have FAT_INPUT_LENGTH + zero terminator size
 ;-------------------------------------------------------------------------------
+keymap_file_initial db "KBRD_EN.MAP ", 0
 keymap_file db "KBRD_EN.MAP ", 0
 shell_file  db "SHELL.COM   ", 0
 font_file   db "FONT_3X5.BIN", 0
@@ -95,6 +96,15 @@ kernel_setup:
     mov bx, _kernel_test_gfx
     call kernel_install_interrupt
 
+    ; read default keyboard file
+    mov si, keymap_file_initial
+    call keyboard_set_intial_keymap
+
+    ; check if config should be read
+    mov ah, FUNC_KEY_F7
+    int 0xb2
+    cmp al, 0x01
+    je .skip_config_file
     ; Check if file exists
     mov si, kernel_config_file
     int 0xc1 ; Get file size
@@ -114,9 +124,19 @@ kernel_setup:
     .warn_no_kernel_config db "Kernel configuration skipped! Using defaults.", ASCII_CR, ASCII_LF, 0  
     .after_config_file:
 
-    ; read keyboard file
-    mov si, keymap_file
-    call keyboard_set_intial_keymap
+    ; read keyboard file, if not default
+    push es
+        push ds
+        pop es
+
+        mov si, keymap_file
+        mov di, keymap_file_initial
+        mov ah, 0b11
+        int 0xd2
+        jnc .no_update_keymap
+            call keyboard_set_intial_keymap
+        .no_update_keymap:
+    pop es
 
     ; check if gfx mode should be enabled
     mov ah, FUNC_KEY_F8
@@ -175,7 +195,7 @@ kernel_setup:
     .warn_no_gfx_mode db "GFX mode not enabled!", ASCII_CR, ASCII_LF, 0
     .after_gfx_mode:
 
-    call cosic_init
+    ;call cosic_init
 
     ; check if shell exists
     mov si, shell_file
@@ -235,7 +255,8 @@ kernel_setup:
     .after_shell:
 
     ; set default video mode and start mlt
-    call display_restore_default_kernel_video_mode
+    ;call display_restore_default_kernel_video_mode
+    ;int 0x95
 
     ; Start mlt
     int 0xf0
@@ -442,6 +463,10 @@ install_string:
     mov bx, str_remove_whitespace
     call kernel_install_interrupt
 
+    mov al, 0xd6
+    mov bx, str_terminate
+    call kernel_install_interrupt
+
     ret
 
 install_convert:
@@ -484,9 +509,9 @@ install_misc:
     mov bx, misc_start_com
     call kernel_install_interrupt
 
-    mov al, 0xf3
-    mov bx, cosic_execute
-    call kernel_install_interrupt
+    ;mov al, 0xf3
+    ;mov bx, cosic_execute
+    ;call kernel_install_interrupt
 
     ret
 ;-------------------------------------------------------------------------------
@@ -715,14 +740,32 @@ process_config_file:
         cmp dh, 0 ; Check if an error occured
         jnz .skip_entry
 
-        ; alter string to ignore whitespace
-        push word [cs:.str_segment]
-        pop ds
-        mov si, [cs:.str_offset]
+        ; remove comment
+        push es
+            push cs
+            pop es
+            push word [cs:.str_segment]
+            pop ds
+            mov si, [cs:.str_offset]
+            mov di, .process_config_file_dummy
+            mov ah, 2
+            mov al, byte [cs:.process_config_file_comment]
+            mov cx, 1
+            int 0xd4 ; Split string
+        pop es
+
+        ; remove all whitespace from string
         push ax
             mov ah, 1
             int 0xd5
         pop ax
+
+        ; check if string is empty
+        cmp byte [ds:si], 0
+        jz .loop ; next entry
+
+        ; Display configuration directive
+        call .info_current_directive
 
         ; Split string on = sign
         mov ah, 0b10 ; termination of the first and second string
@@ -736,7 +779,7 @@ process_config_file:
 
         ; Check for ident and set vars accordingly
         ; Keyboard map
-        mov ah, 1 ; Check if equal
+        mov ah, 11b ; Check if equal, caseinsensitive
         ; ds:si already set
         push cs
         pop es
@@ -744,8 +787,17 @@ process_config_file:
         int 0xd2
         jnc .set_keyboard_map ; set var, if equal
 
+        ; Textmode color
+        mov ah, 11b ; Check if equal, caseinsensitive
+        ; ds:si already set
+        push cs
+        pop es
+        mov di, .config_txt_color_ident
+        int 0xd2
+        jnc .set_txt_color ; set var, if equal
+
         ; Shell file
-        mov ah, 1 ; Check if equal
+        mov ah, 11b ; Check if equal, caseinsensitive
         ; ds:si already set
         push cs
         pop es
@@ -754,7 +806,7 @@ process_config_file:
         jnc .set_shell_file ; set var, if equal
 
         ; Shell parameter
-        mov ah, 1 ; Check if equal
+        mov ah, 11b ; Check if equal, caseinsensitive
         ; ds:si already set
         push cs
         pop es
@@ -763,13 +815,24 @@ process_config_file:
         jnc .set_shell_params ; set var, if equal
 
         ; Font file
-        mov ah, 1 ; Check if equal
+        mov ah, 11b ; Check if equal, caseinsensitive
         ; ds:si already set
         push cs
         pop es
         mov di, .config_font_ident
         int 0xd2
         jnc .set_font_file ; set var, if equal
+
+        ; gfx mode color
+        mov ah, 11b ; Check if equal, caseinsensitive
+        ; ds:si already set
+        push cs
+        pop es
+        mov di, .config_gfx_color_ident
+        int 0xd2
+        jnc .set_gfx_color ; set var, if equal
+
+        jmp .error_no_directive
 
         .skip_entry: 
             jmp .loop
@@ -813,6 +876,46 @@ process_config_file:
         mov bx, 0 ; Start from begin of string
         mov dx, FAT_INPUT_LENGTH ; Max file length
         int 0xd3 ; Copy substring to string
+
+        jmp .loop
+
+    .set_txt_color:
+        push word [cs:.parameter_segment]
+        pop ds
+        mov si, [cs:.parameter_offset]
+
+        int 0xe3
+        jc .error_parameter ; skip if error
+
+        ; Check if number greater than 0xff
+        cmp ax, 0xff
+        ja .error_parameter
+
+        ; Check if nibbles are equal
+        mov bh, al
+        mov bl, al
+        shr bh, 4
+        and bl, 0x0f
+        cmp bh, bl
+        jz .error_parameter
+
+        ; Write color code to display vars
+        mov [cs:display_color], al
+
+        ; Update info/warning/error/critical backgrounds
+        and al, 0xf0 ; delete foreground information
+
+        and byte [cs:display_info_color], 0x0f ; delete background information
+        or byte [cs:display_info_color], al
+
+        and byte [cs:display_warning_color], 0x0f ; delete background information
+        or byte [cs:display_warning_color], al
+
+        and byte [cs:display_error_color], 0x0f ; delete background information
+        or byte [cs:display_error_color], al
+
+        and byte [cs:display_critical_color], 0x0f ; delete background information
+        or byte [cs:display_critical_color], al
 
         jmp .loop
 
@@ -876,6 +979,62 @@ process_config_file:
 
         jmp .loop 
 
+    .set_gfx_color:
+        push word [cs:.parameter_segment]
+        pop ds
+        mov si, [cs:.parameter_offset]
+
+        int 0xe3
+        jc .error_parameter ; skip if error
+
+        ; Check if bytes are equal
+        cmp ah, al
+        jz .error_parameter
+
+        ; Write color code to display vars
+        mov [cs:display_gfx_bg_color], ah
+        mov [cs:display_gfx_fg_color], al
+
+        jmp .loop
+
+    ; Print an info with the current directive in ds:si
+    .info_current_directive:
+        mov al, 0 ; Info
+        int 0x97
+
+        call crlf
+
+        ret
+
+    ; Print a warning text, that the current config directrive is not recognized
+    .error_no_directive:
+        push ds
+        push si
+            push cs
+            pop ds
+            mov si, .warn_directive_not_recognized
+            mov al, 1 ; Warning
+            int 0x97
+        pop si
+        pop ds
+
+        jmp .loop ; next entry
+
+    ; Print a warning text, that the current config directrive contains errors
+    .error_parameter:
+        push ds
+        push si
+            push cs
+            pop ds
+            mov si, .warn_directive_contains_errors
+            mov al, 1 ; Warning
+            int 0x97
+        pop si
+        pop ds
+
+        jmp .loop ; next entry
+
+    ; Print a warning text, that the current file does not exist
     .error_file_not_found:
         ; ds:si locates to string of current file
         mov al, 1 ; Warning
@@ -893,10 +1052,14 @@ process_config_file:
         jmp .loop
 
     .config_kbrd_ident db "KBRD_MAP", 0
+    .config_txt_color_ident db "TXT_COLOR", 0
     .config_shell_ident db "SHELL", 0
     .config_shell_cmd_ident db "SHELL_PARAMS", 0
     .config_font_ident db "FONT", 0
+    .config_gfx_color_ident db "GFX_COLOR", 0
     .warn_not_found_default db " not found! Using default instead.", ASCII_CR, ASCII_LF, 0
+    .warn_directive_contains_errors db "Configuration directive caused an error!", ASCII_CR, ASCII_LF, 0
+    .warn_directive_not_recognized db "Configuration directive not recognized!", ASCII_CR, ASCII_LF, 0
     .info_reading_config db "Reading kernel configuration file KERNEL.CFG", 0
     .file_segment dw 0
     .file_offset dw 0
@@ -906,6 +1069,8 @@ process_config_file:
     .parameter_offset dw 0
     .process_file db TRUE
     .MAX_STR_LENGTH equ 128
+    .process_config_file_comment db ";"
+    .process_config_file_dummy dw 0 ; one byte for dummy string, one byte terminator
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------

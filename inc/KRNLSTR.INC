@@ -92,7 +92,7 @@ str_init:
 ; Checks if a string contains another string
 ;
 ; input:
-;   ah -> mode 
+;   ah -> mode (flags)
 ;       0 contains substring 
 ;       1 are strings equal
 ;       2 caseinsensitive
@@ -124,11 +124,42 @@ str_contains:
 
         mov al, [es:di]
         mov ah, [ds:si]
-        cmp al, ah
-        jne .skip_si_restore_di
 
-        inc si
-        inc di
+        test byte [cs:.mode], 2
+        jz .compare_casesensitive
+
+        ; only check caseinsensitive, if al is a character A-Z or a-z
+        cmp al, ASCII_A
+        jl .compare_casesensitive 
+        cmp al, ASCII_Z_LOWER
+        jg .compare_casesensitive 
+        cmp al, ASCII_Z
+        jle .compare_case_in_sensitive
+        cmp al, ASCII_A_LOWER
+        jg .compare_casesensitive
+
+        .compare_case_in_sensitive:
+            cmp al, ah
+            jg .compare_al_lower
+            jl .compare_al_upper
+            jz .compare_casesensitive
+
+            .compare_al_lower:
+                ; al is higher in value than ah -> possibly an lower case letter
+                sub al, ASCII_A_LOWER - ASCII_A
+                jmp .compare_casesensitive
+
+            .compare_al_upper:
+                ; al is lower in value than ah -> possibly an upper case letter
+                add al, ASCII_A_LOWER - ASCII_A
+                jmp .compare_casesensitive
+
+        .compare_casesensitive:
+            cmp al, ah
+            jne .skip_si_restore_di
+
+            inc si
+            inc di
 
         jmp .compare
 
@@ -424,6 +455,38 @@ str_remove_whitespace:
         pop ds
         pop ax
         popf
+        iret
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Terminates the string at the first occurence of the character (overwriting 
+; the character)
+;
+; input:
+;   ds:si -> string to terminate
+;   dl -> Character to terminate on
+;
+; output:
+;   none
+;-------------------------------------------------------------------------------
+str_terminate:
+    sti ; enable hardware interrupts while processing string
+
+    push si
+
+    .loop:
+        cmp byte [ds:si], 0
+        je .str_terminate_done
+        cmp byte [ds:si], dl
+        je .terminate
+        inc si
+        jmp .loop
+
+    .terminate:
+        mov byte [ds:si], 0
+
+    .str_terminate_done:
+        pop si
         iret
 ;-------------------------------------------------------------------------------
 

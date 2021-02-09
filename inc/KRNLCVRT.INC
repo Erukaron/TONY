@@ -152,6 +152,9 @@ convert_lba_chs:
 ; from which "the source code is fully available, without any restrictions on 
 ; its usage and modification."
 ;
+; Modified to return carry flag set on error
+; Modified to also process strings with hex and binary modifier: 0x12, 34h, 0110b
+;
 ; Converts a 16-bit string representation of a decimal unsigned integer to an 
 ; unsigned integer.
 ;
@@ -160,20 +163,193 @@ convert_lba_chs:
 ;
 ; output:
 ;   AX -> resulting integer
+;   carry -> set on error
 ;-------------------------------------------------------------------------------
 convert_unsigned_16bit_atoi:
     sti ; Allow hardware interrupts to occur while processing software interrupts
+
+    push bp
+
+    mov bp, sp
+    add bp, 2
 
     push bx
     push cx
     push dx
     push si
     push di
+    push es
     
     mov ax, 0                               ; 0 is default for bad values
+    mov byte [cs:.convert_unsigned_16bit_atoi_error], TRUE
     cmp byte [ds:si], 0
     je .string_unsigned_16bit_atoi_exit      ; NOOP when empty string
     
+    mov byte [cs:.convert_unsigned_16bit_atoi_error], FALSE
+
+
+
+
+
+    ; Test with binary trailing
+    ;   hex trailing
+    ;   no modifier
+    ;   Each: 0, max, middle
+
+    xor dx, dx
+    mov byte [cs:.no_nibble], 0
+
+    push cs
+    pop es
+    mov di, .hex_value
+    mov cx, 5
+    int 0xd1
+    mov di, .bin_value
+    mov cx, 17
+    int 0xd1
+
+    ; ds:si already set
+    ; es already set to cs
+    mov ah, 0b10 ; check if contains (ignore case)
+    mov di, .hex_marker
+    int 0xd2
+    jnc .hex
+    mov di, .hex_trailing_marker
+    int 0xd2
+    jnc .hex_trailing
+    mov di, .bin_trailing_marker
+    int 0xd2
+    jnc .bin
+
+    ; default is decimal
+    jmp .decimal
+
+    .bin:
+        push cs
+        pop es
+        mov dl, [cs:.bin_trailing_marker]
+        int 0xd6 ; terminate string
+        mov bx, 0
+        mov dx, 16
+        mov di, .bin_value
+        int 0xd3 ; copy string
+
+        xor dx, dx
+        xor cl, cl ; Loop count
+        mov bx, 1000000000000000b
+
+        .bin_loop:
+            mov al, [cs:di] ; bit
+            cmp al, 0 ; Last entry
+            je .bin_conversion_done
+            cmp al, ASCII_0
+            je .bit_zero
+            cmp al, ASCII_1
+            je .bit_one
+            jmp .error
+
+        .bit_zero:
+            jmp .bit_transform_done
+        .bit_one:
+            or dx, bx
+        .bit_transform_done:
+            shr bx, 1
+            inc di
+            inc cl
+            jmp .bin_loop
+        .bin_conversion_done:
+            mov al, 16
+            sub al, cl
+            mov cl, al
+            shr dx, cl
+            jmp .done
+
+    .hex:
+        ; Split hex part
+        push cs
+        pop es
+        mov di, .hex_value
+        mov ah, 1
+        mov cx, 4
+        mov al, [cs:.hex_marker]
+        int 0xd4
+
+        jmp .hex_loop
+
+    .hex_trailing:
+        ; Split hex part
+        push cs
+        pop es
+        mov dl, [cs:.hex_trailing_marker]
+        int 0xd6 ; terminate string
+        mov bx, 0
+        mov dx, 4
+        mov di, .hex_value
+        int 0xd3 ; copy string
+
+        .hex_loop:
+            mov al, [cs:di] ; Hex value
+            cmp al, 0 ; Last entry
+            je .done
+            cmp byte [cs:.no_nibble], 4
+            je .done ; Maximum size
+            cmp byte [cs:.no_nibble], 2
+            jne .hex_conversion ; Jump if value is not exactly two
+            mov dh, dl
+            mov dl, 0
+
+            .hex_conversion:
+                shl dl, 4
+                cmp al, ASCII_0
+                jl .error
+                cmp al, ASCII_9
+                jg .no_number
+                sub al, 0x30 ; ASCII_0
+                add dl, al      
+
+                jmp .byte_converted_to_nibble
+
+                .no_number:
+                    cmp al, ASCII_A_LOWER
+                    jl .capital_letter
+                    cmp al, ASCII_F_LOWER
+                    jg .error
+                    sub al, ASCII_A_LOWER - ASCII_A ; subtract offset from a to A
+                    .capital_letter:
+                    cmp al, ASCII_A
+                    jl .error
+                    cmp al, ASCII_F
+                    jg .error
+                    sub al, ASCII_A
+                    add al, 10 ; Offset for A
+                    add dl, al
+
+                .byte_converted_to_nibble:
+                    add byte [cs:.no_nibble], 1
+                    inc di
+                    jmp .hex_loop
+
+    .error:
+        mov byte [cs:.convert_unsigned_16bit_atoi_error], TRUE
+        jmp .string_unsigned_16bit_atoi_exit
+    .done:
+        mov ax, dx
+        jmp .string_unsigned_16bit_atoi_exit
+
+    .no_nibble db 0
+    .hex_marker db 'x', 0
+    .hex_trailing_marker db 'h', 0
+    .bin_trailing_marker db 'b', 0
+    .hex_value times 5 db 0 ; null terminated
+    .bin_value times 17 db 0 ; null terminated
+
+
+
+
+
+
+
+.decimal:
     mov cx, 0                               ; CX will hold intermediate results
     mov bx, 1                               ; multiplier
     
@@ -206,12 +382,26 @@ convert_unsigned_16bit_atoi:
     mov bx, ax                              ; BX := multiplier * 10
     jmp .string_unsigned_16bit_atoi_accumulate   ; process this digit
 .string_unsigned_16bit_atoi_exit:
-    pop di
-    pop si
-    pop dx
-    pop cx
-    pop bx
-    iret
+    cmp byte [cs:.convert_unsigned_16bit_atoi_error], TRUE
+    jnz .no_error
+        ; return carry flag set -> change value in stack
+        or word [ss:bp + 4], 1
+        jmp .done_error
+    .no_error:
+        ; return carry flag not set -> change value in stack
+        and word [ss:bp + 4], 0xfffe
+
+    .done_error:
+        pop es
+        pop di
+        pop si
+        pop dx
+        pop cx
+        pop bx
+        pop bp
+        iret
+
+    .convert_unsigned_16bit_atoi_error db TRUE
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------

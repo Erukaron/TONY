@@ -60,22 +60,9 @@ display_font_array:
 
 ; darker gray
 display_gfx_bg_color     db 19
-; lighter gray 
-;display_gfx_bg_color     db 20
-; amber 1
-;display_gfx_fg_color     db 42
 ; amber 2
 display_gfx_fg_color     db 43
-; green 1
-;display_gfx_fg_color     db 50
-; green 2
-;display_gfx_fg_color     db 51
-; blue 1
-;display_gfx_fg_color     db 52
-; blue 2
-;display_gfx_fg_color     db 53
-; white
-;display_gfx_fg_color     db 15
+
 display_gfx_fg_info_color     db 0x09 
 display_gfx_fg_warning_color  db 0x2c 
 display_gfx_fg_error_color    db 0x0c 

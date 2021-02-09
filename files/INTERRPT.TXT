@@ -336,7 +336,7 @@ TONY interrupts:
 0xd2
     Checks if a string contains another string
     input:
-        ah -> mode
+        ah -> mode (flags)
             0 contains substring 
             1 are strings equal
             2 ignore case
@@ -380,6 +380,15 @@ TONY interrupts:
         ds:si -> removed white space characters
         cx -> Number of white spaces removed
 -------------------------------------------------
+0xd6
+    Terminates the string at the first occurence of the character (overwriting 
+    the character)
+    input:
+        ds:si -> string to terminate
+        dl -> Character to terminate on
+    output:
+        none
+-------------------------------------------------
 
 -------------------------------------------------
 0xe0
@@ -407,12 +416,13 @@ TONY interrupts:
         ch -> Track: logical sector / (sectors per track * number of heads)
 -------------------------------------------------
 0xe3
-    Convert a 16-bit string representation of a decimal
+    Convert a 16-bit string representation of a bin/hex/decimal
     unsigned integer to an unsigned integer
     input:
         ds:si -> string representation of 16-bit unsigned int
     output:
         ax -> resulting integer
+        carry -> set on error
 -------------------------------------------------
 0xe4
     Converts a number into printable hex format
