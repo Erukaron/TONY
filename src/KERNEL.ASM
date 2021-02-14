@@ -62,6 +62,8 @@ shell_cmd_offset dw 0
 ; Kernel setup
 ;-------------------------------------------------------------------------------
 kernel_setup:
+    cli ; disable interrupts for segment setup
+
     ; set data segments
     mov ax, KERNEL_SEGMENT
     mov ds, ax
@@ -69,13 +71,12 @@ kernel_setup:
 
     ; set stack segment
     mov ax, STACK_SEGMENT
-    cli
     mov ss, ax
     xor sp, sp
-    sti
 
     ; save bootdrive
     mov [ds:bootdrive], dl
+    sti
 
     ; set default video mode
     call display_restore_default_kernel_video_mode
@@ -158,7 +159,7 @@ kernel_setup:
         call crlf
 
         ; Now that we have a font file, switch to gfx mode
-        mov al, 1 ; gfx mode
+        mov al, VIDEOMODE_GFX_320_200_COLOR ; gfx mode
         int 0x93 ; Switch video mode
 
                             ; -------------------Testcode
@@ -257,6 +258,28 @@ kernel_setup:
     ; set default video mode and start mlt
     ;call display_restore_default_kernel_video_mode
     ;int 0x95
+
+    ; register keyboard hotkeys
+    mov al, ASCII_R
+    int 0xb4 ; get scancode from ascii char
+    ; al set to scancode
+    mov ah, 0b111 ; Alt, Ctrl, Shft
+    ; bios reset vector -> a jump to this location issues a reset
+    mov bx, 0xffff
+    mov dx, 0
+    int 0xb3
+
+    mov ah, 0
+    mov al, SCAN_CODE_F12
+    mov bx, cs
+    mov dx, oracle
+    int 0xb3
+    
+    push cs
+    pop ds
+    mov si, test_file
+    int 0xc2
+    test_file db "TESTFILE.TST", 0
 
     ; Start mlt
     int 0xf0
@@ -377,6 +400,14 @@ install_keyboard:
 
     mov al, 0xb2
     mov bx, keyboard_is_function_key_pressed
+    call kernel_install_interrupt
+
+    mov al, 0xb3
+    mov bx, keyboard_event_registrator
+    call kernel_install_interrupt
+
+    mov al, 0xb4
+    mov bx, keyboard_ascii_to_scancode
     call kernel_install_interrupt
 
     call keyboard_init
@@ -512,6 +543,10 @@ install_misc:
     ;mov al, 0xf3
     ;mov bx, cosic_execute
     ;call kernel_install_interrupt
+
+    mov al, 0xf4
+    mov bx, timer_create_random_number
+    call kernel_install_interrupt
 
     ret
 ;-------------------------------------------------------------------------------
@@ -838,7 +873,6 @@ process_config_file:
             jmp .loop
     .exit_loop:
 
-    ;xchg bx, bx
     mov bp, [cs:.file_segment]
     mov bx, [cs:.file_offset]
     int 0xc3 ; Close file
@@ -1072,6 +1106,37 @@ process_config_file:
     .process_config_file_comment db ";"
     .process_config_file_dummy dw 0 ; one byte for dummy string, one byte terminator
 ;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Speaks the ultimate truth, always
+;-------------------------------------------------------------------------------
+oracle:
+    pusha
+    push ds
+
+    push cs
+    pop ds
+
+    int 0xf4
+    test al, 1
+    jnz .yes
+    .no:
+        mov si, .no_str
+        jmp .print
+    .yes:
+        mov si, .yes_str
+
+    .print:
+    int 0x91
+
+    pop ds
+    popa
+    retf
+
+    .yes_str db "YES", 0x0a, 0x0d, 0
+    .no_str db "NO", 0x0a, 0x0d, 0
+;-------------------------------------------------------------------------------
+
 
 ;-------------------------------------------------------------------------------
 ; Draw rectangles on the screen to test colors

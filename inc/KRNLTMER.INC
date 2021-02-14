@@ -282,6 +282,36 @@ timer_sleep_seconds:
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
+; Get random number (byte)
+;
+; input:
+;   none
+; output:
+;   AL -> Random number
+;-------------------------------------------------------------------------------
+timer_create_random_number:
+    sti
+
+    push bx
+    mov bx, ax
+
+    mov al, [cs:keyboard_key_buffer]
+    mov cl, [cs:keyboard_key_buffer_entries]
+    inc cl
+    mul cl ; randomizer, if user entered something
+    mov cl, al
+
+    mov al, [cs:timer_tick_count_lo]
+
+    add cl, 251 ; add a prime number
+    mul cl
+
+    mov ah, bh
+    pop bx
+    iret
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
 ; Description
 ;
 ; input: 

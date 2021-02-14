@@ -144,7 +144,7 @@ TONY interrupts:
 0x93
     Switch the video mode
     input: 
-        AL -> Video mode (0 : Textmode 80x25, 1 : Videomode 320x200)
+        AL -> Video mode (0 : Textmode 40x25, 1 : Textmode 80x25, 2 : Videomode 320x200)
     output:
         none
 -------------------------------------------------
@@ -212,6 +212,31 @@ TONY interrupts:
         al = 0x00: key not pressed
         al = 0x01: key pressed
         al = 0xff: key not in current keymap
+-------------------------------------------------
+0xb3
+    Keyboard event registration
+    Keyboard event handling code needs to exit with a retf instruction
+    input:
+        ah -> Flags
+            (Modifiers)
+            1 : Shift
+            2 : Ctrl
+            4 : Alt
+            (Options)
+          128 : de-register the event -> bx:dx is returned event handler
+        al -> Scancode (extended scan codes are not supported!) (msb is 1 for event on key release instead of key down)
+        bx:dx -> Target address (event handler)
+    output:
+        bx:dx -> Event handler (for deregistering the event)
+-------------------------------------------------
+0xb4
+    Returns the scancode for an ascii character
+    input:
+        al -> ASCII character
+    output:
+        al -> Scancode 
+        (0x00 if ascii character not in current keymap)
+        (only works for non extended scan codes!)
 -------------------------------------------------
 0xb8
     Allocate memory (in 16-byte units)
@@ -474,6 +499,13 @@ TONY interrupts:
     output:
         AL -> Error code
         AH -> Column number
+-------------------------------------------------
+0xf4
+    Get random number (byte)
+    input:
+        none
+    output:
+        AL -> Random number
 -------------------------------------------------
 0xff
     Software

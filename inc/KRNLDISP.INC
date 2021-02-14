@@ -29,6 +29,12 @@
 ;-------------------------------------------------------------------------------
 ; Constants
 ;-------------------------------------------------------------------------------
+DISPLAY_GRAY_40x25_MAX_X    equ 39
+DISPLAY_GRAY_40x25_MAX_Y    equ 24
+
+DISPLAY_COLOR_80x25_MAX_X   equ 79
+DISPLAY_COLOR_80x25_MAX_Y   equ 24
+
 DISPLAY_GFX_FONT_WIDTH      equ 4
 DISPLAY_GFX_FONT_HEIGHT     equ 6
 DISPLAY_GFX_SCREEN_WIDTH    equ 320
@@ -38,7 +44,7 @@ DISPLAY_GFX_SCREEN_HEIGHT   equ 200
 ;-------------------------------------------------------------------------------
 ; Variables
 ;-------------------------------------------------------------------------------
-display_video_mode   db 0x00
+display_video_mode     db VIDEOMODE_BIOS_ASCII_GRAY_40x25
 
 display_color          db 0x06 ; high nibble is background, low nibble foreground
 display_info_color     db 0x09 ; high nibble is background, low nibble foreground
@@ -137,7 +143,7 @@ display_set_blink_mode:
 ; Switches the video mode
 ;
 ; input: 
-;   AL -> Video mode (0 : Textmode 80x25, 1 : Videomode 320x200)
+;   AL -> Video mode (0 : Texmode 40x25, 1 : Textmode 80x25, 2 : Videomode 320x200)
 ;
 ; output:
 ;   none
@@ -147,15 +153,23 @@ display_switch_video_mode:
 
     push ax
 
-    mov ah, VIDEOMODE_BIOS_ASCII_COLOR_80x25
+    mov ah, VIDEOMODE_BIOS_ASCII_GRAY_40x25
     mov [cs:display_video_mode], ah
 
+    cmp al, VIDEOMODE_ASCII_GRAY_40x25
+    jnz .check_color_text
+    mov byte [cs:display_max_x], DISPLAY_GRAY_40x25_MAX_X
+    mov byte [cs:display_cols], DISPLAY_GRAY_40x25_MAX_X + 1
+    jmp .done
+
+    .check_color_text:
     cmp al, VIDEOMODE_ASCII_COLOR_80x25
     jnz .check_gfx_mode
     mov ah, VIDEOMODE_BIOS_ASCII_COLOR_80x25
     mov [cs:display_video_mode], ah
+    mov byte [cs:display_max_x], DISPLAY_COLOR_80x25_MAX_X
+    mov byte [cs:display_cols], DISPLAY_COLOR_80x25_MAX_X + 1
     jmp .done
-
 
     .check_gfx_mode:
     cmp al, VIDEOMODE_GFX_320_200_COLOR
@@ -182,11 +196,17 @@ display_switch_video_mode:
 ;   none
 ;
 ; output:
-;   AL -> Video mode (0 : Textmode 80x25, 1 : Videomode 320x200)
+;   AL -> Video mode (0 : Texmode 40x25, 1 : Textmode 80x25, 2 : Videomode 320x200)
 ;-------------------------------------------------------------------------------
 display_get_video_mode:
     sti ; Allow hardware interrupts to occur while processing software interrupts
 
+    cmp byte [cs:display_video_mode], VIDEOMODE_ASCII_GRAY_40x25
+    jnz .check_color_text
+    mov al, VIDEOMODE_ASCII_GRAY_40x25
+    jmp .done
+
+    .check_color_text:
     cmp byte [cs:display_video_mode], VIDEOMODE_BIOS_ASCII_COLOR_80x25
     jnz .check_gfx_mode
     mov al, VIDEOMODE_ASCII_COLOR_80x25
@@ -218,6 +238,31 @@ display_clear_screen:
     push es
     pusha
 
+    cmp byte [cs:display_video_mode], VIDEOMODE_BIOS_ASCII_GRAY_40x25
+    jnz .not_VIDEOMODE_ASCII_GRAY_40x25
+        push GRAYSCALEDISPLAY_TEXT_SEGMENT
+        pop es
+        mov di, GRAYSCALEDISPLAY_TEXT_OFFSET
+
+        ; calculate no of bytes
+        mov ax, DISPLAY_GRAY_40x25_MAX_X + 1
+        mov cx, DISPLAY_GRAY_40x25_MAX_Y + 1
+        mul cx
+        shl ax, 1 ; one byte for char, one byte for color
+        mov cx, ax
+        .clear_VIDEOMODE_ASCII_GRAY_40x25:
+            mov al, 0 ; character
+            mov ah, [cs:display_color]
+            mov [es:di], ax
+            add di, 2
+        loop .clear_VIDEOMODE_ASCII_GRAY_40x25
+
+        mov al, [cs:display_min_x]
+        mov [cs:display_current_x], al
+        mov al, [cs:display_min_y]
+        mov [cs:display_current_y], al
+    .not_VIDEOMODE_ASCII_GRAY_40x25:
+
     cmp byte [cs:display_video_mode], VIDEOMODE_BIOS_ASCII_COLOR_80x25
     jnz .not_VIDEOMODE_ASCII_COLOR_80x25
         push COLORDISPLAY_TEXT_SEGMENT
@@ -225,8 +270,8 @@ display_clear_screen:
         mov di, COLORDISPLAY_TEXT_OFFSET
 
         ; calculate no of bytes
-        mov ax, 80
-        mov cx, 25
+        mov ax, DISPLAY_COLOR_80x25_MAX_X + 1
+        mov cx, DISPLAY_COLOR_80x25_MAX_Y + 1
         mul cx
         shl ax, 1 ; one byte for char, one byte for color
         mov cx, ax
@@ -250,8 +295,8 @@ display_clear_screen:
         mov di, COLORDISPLAY_GFX_OFFSET
 
         ; calculate no of bytes
-        mov ax, 320
-        mov cx, 200
+        mov ax, DISPLAY_GFX_SCREEN_WIDTH
+        mov cx, DISPLAY_GFX_SCREEN_HEIGHT
         mul cx
         mov cx, ax
         .clear_VIDEOMODE_GFX_320_200_COLOR:

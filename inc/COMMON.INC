@@ -32,29 +32,32 @@
 ;-------------------------------------------------------------------------------
 ; Segments
 ;-------------------------------------------------------------------------------
-INTERRUPT_SEGMENT           equ 0x0000
-INTERRUPT_OFFSET            equ 0x0000
-ROOT_SEGMENT                equ 0x0000
-ROOT_OFFSET                 equ 0x0600
-FAT_SEGMENT                 equ 0x0000
-FAT_OFFSET                  equ 0x2200
-BOOT_SEGMENT                equ 0x07c0
-BOOT_OFFSET                 equ 0x0000
-KERNEL_SEGMENT              equ 0x0000
-KERNEL_OFFSET               equ 0x3400
-STACK_SEGMENT               equ 0x1000
-STACK_OFFSET                equ 0x0000
-BOOT_COPY_SEGMENT           equ 0x2000
-BOOT_COPY_OFFSET            equ 0x0000
-COLORDISPLAY_TEXT_SEGMENT   equ 0xb800
-COLORDISPLAY_TEXT_OFFSET    equ 0x0000
-COLORDISPLAY_GFX_SEGMENT    equ 0xa000
-COLORDISPLAY_GFX_OFFSET     equ 0x0000
+INTERRUPT_SEGMENT               equ 0x0000
+INTERRUPT_OFFSET                equ 0x0000
+ROOT_SEGMENT                    equ 0x0000
+ROOT_OFFSET                     equ 0x0600
+FAT_SEGMENT                     equ 0x0000
+FAT_OFFSET                      equ 0x2200
+BOOT_SEGMENT                    equ 0x07c0
+BOOT_OFFSET                     equ 0x0000
+KERNEL_SEGMENT                  equ 0x0000
+KERNEL_OFFSET                   equ 0x3400
+STACK_SEGMENT                   equ 0x1000
+STACK_OFFSET                    equ 0x0000
+BOOT_COPY_SEGMENT               equ 0x2000
+BOOT_COPY_OFFSET                equ 0x0000
+GRAYSCALEDISPLAY_TEXT_SEGMENT   equ 0xb800
+GRAYSCALEDISPLAY_TEXT_OFFSET    equ 0x0000
+COLORDISPLAY_TEXT_SEGMENT       equ 0xb800
+COLORDISPLAY_TEXT_OFFSET        equ 0x0000
+COLORDISPLAY_GFX_SEGMENT        equ 0xa000
+COLORDISPLAY_GFX_OFFSET         equ 0x0000
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
 ; BIOS modes
 ;-------------------------------------------------------------------------------
+VIDEOMODE_BIOS_ASCII_GRAY_40x25  equ 0x00
 VIDEOMODE_BIOS_ASCII_COLOR_80x25 equ 0x03
 VIDEOMODE_BIOS_GFX_320_200_COLOR equ 0x13
 ;-------------------------------------------------------------------------------
@@ -62,8 +65,9 @@ VIDEOMODE_BIOS_GFX_320_200_COLOR equ 0x13
 ;-------------------------------------------------------------------------------
 ; Video mode
 ;-------------------------------------------------------------------------------
-VIDEOMODE_ASCII_COLOR_80x25 equ 0
-VIDEOMODE_GFX_320_200_COLOR equ 1
+VIDEOMODE_ASCII_GRAY_40x25  equ 0
+VIDEOMODE_ASCII_COLOR_80x25 equ 1
+VIDEOMODE_GFX_320_200_COLOR equ 2
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------

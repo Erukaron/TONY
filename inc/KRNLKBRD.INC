@@ -37,6 +37,10 @@ KEYBOARD_KEY_STATE_NOT_PRESSED          equ 0
 KEYBOARD_KEY_STATE_PRESSED              equ 1
 KEYBOARD_KEY_BUFFER_LENGTH              equ 32
 KEYBOARD_FUNC_KEY_IDENT_OFFSET          equ 2
+KEYBOARD_KEYMAP_TABLE_START_IDENT_OFFSET equ 0
+KEYBOARD_KEYMAP_TABLE_END_IDENT_OFFSET  equ 2
+KEYBOARD_KEYMAP_SCANCODE_OFFSET         equ 1
+KEYBOARD_KEYMAP_ASCII_LO_OFFSET         equ 2
 KEYBOARD_KEYMAP_ALTGR_MODIFIER_OFFSET   equ 4
 KEYBOARD_KEYMAP_LINE_BYTES              equ 5
 KEYBOARD_KEY_STATE_EXTENDED_OFFSET      equ 128
@@ -50,6 +54,18 @@ KEYBOARD_SELF_TEST_FAILURE_1            equ 0xfc
 KEYBOARD_SELF_TEST_FAILURE_2            equ 0xfd
 KEYBOARD_RESEND                         equ 0xfe
 KEYBOARD_KEY_DETECTION_ERROR_2          equ 0xff
+
+KEYBOARD_EVENT_HANDLE_NEXT_SEGMENT      equ 0x00
+KEYBOARD_EVENT_HANDLE_NEXT_OFFSET       equ 0x02
+KEYBOARD_EVENT_HANDLE_FLAGS             equ 0x04
+    KEYBOARD_EVENT_HANDLE_FLAGS_SHFT        equ 0x01
+    KEYBOARD_EVENT_HANDLE_FLAGS_CTRL        equ 0x02
+    KEYBOARD_EVENT_HANDLE_FLAGS_ALT         equ 0x04
+    KEYBOARD_EVENT_HANDLE_FLAGS_ON_RELEASE  equ 0x40
+    KEYBOARD_EVENT_HANDLE_FLAGS_IN_SERVICE  equ 0x80
+KEYBOARD_EVENT_HANDLE_SCANCODE          equ 0x05
+KEYBOARD_EVENT_HANDLE_TARGET_SEGMENT    equ 0x06
+KEYBOARD_EVENT_HANDLE_TARGET_OFFSET     equ 0x08
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
@@ -63,6 +79,9 @@ keyboard_keymap:
 
 keyboard_key_buffer_entries db 0
 keyboard_key_buffer: times KEYBOARD_KEY_BUFFER_LENGTH db 0
+
+keyboard_event_handler_segment_start dw 0
+keyboard_event_handler_offset_start dw 0
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
@@ -171,6 +190,7 @@ keyboard_callback:
     xor bx, bx ; Offset for key state table for the current scan code
     xor cx, cx ; Offset for key state table (0 for normal, 128 for extended keys)
     in al, 0x60 ; Read scancode from keyboard
+    mov [cs:.event_in_service_scancode], al ; save scancode for event managing
 
     cmp al, KEYBOARD_EXTENDED_SCAN_CODE
     jne .no_extended_scan_code
@@ -274,19 +294,117 @@ keyboard_callback:
         mov dx, keyboard_key_buffer ; Get key buffer pointer
         add dl, [cs:keyboard_key_buffer_entries]
         mov al, [cs:keyboard_keymap + bx] ; write char to key buffer
-        mov bx, dx
-        mov [cs:bx], al
+        push bx
+            mov bx, dx
+            mov [cs:bx], al
+        pop bx
         inc byte [cs:keyboard_key_buffer_entries]
 
     .no_buffer_write:
         call kernel_acknowledge_hardware_interrupt
 
     .done:
+        ; Check keyboard events
+        call .check_events
+
         popf
         popa
         iret
 
+    ; Check event handler list to see if any event requests the pressed key
+    .check_events:
+        push ds
+
+        ; set ds:si to first element
+        push word [cs:keyboard_event_handler_segment_start]
+        pop ds
+        mov si, [cs:keyboard_event_handler_offset_start]
+
+        .check_events_loop:
+            ; Check if scan code matches
+            mov dl, [ds:si + KEYBOARD_EVENT_HANDLE_SCANCODE]
+            cmp dl, byte [cs:.event_in_service_scancode]
+            jnz .next_entry
+
+            ; Check flags
+            mov dl, [ds:si + KEYBOARD_EVENT_HANDLE_FLAGS]
+
+            ; Check if event is already in service
+            test dl, KEYBOARD_EVENT_HANDLE_FLAGS_IN_SERVICE
+            jnz .next_entry
+
+            ; Check modifier keys 
+            test dl, KEYBOARD_EVENT_HANDLE_FLAGS_SHFT
+            jz .event_skip_shift_check
+                mov ah, FUNC_KEY_SHIFT
+                int 0xb2
+                cmp al, 1
+                jnz .next_entry ; skip, if requested modifier key is not pressed
+            .event_skip_shift_check:
+
+            test dl, KEYBOARD_EVENT_HANDLE_FLAGS_ALT
+            jz .event_skip_alt_check
+                mov ah, FUNC_KEY_ALT
+                int 0xb2
+                cmp al, 1
+                jnz .next_entry ; skip, if requested modifier key is not pressed
+            .event_skip_alt_check:
+
+            test dl, KEYBOARD_EVENT_HANDLE_FLAGS_CTRL
+            jz .event_skip_ctrl_check
+                mov ah, FUNC_KEY_CTRL
+                int 0xb2
+                cmp al, 1
+                jnz .next_entry ; skip, if requested modifier key is not pressed
+            .event_skip_ctrl_check:
+
+            ; Mark event as in service
+            or byte [ds:si + KEYBOARD_EVENT_HANDLE_FLAGS], KEYBOARD_EVENT_HANDLE_FLAGS_IN_SERVICE
+
+            cld
+
+            push ds
+            push es
+            pushf
+
+            ; return address
+            push cs
+            push .event_return_point
+
+            push word [ds:si + KEYBOARD_EVENT_HANDLE_TARGET_SEGMENT]
+            push word [ds:si + KEYBOARD_EVENT_HANDLE_TARGET_OFFSET]
+
+            sti ; Allow interrupts while processing the event
+            retf ; jump to target address
+
+            .event_return_point:
+            cli ; Disable interrupts after event has been handled
+
+            popf
+            pop es
+            pop ds
+
+            ; Event is no longer in service
+            mov dl, KEYBOARD_EVENT_HANDLE_FLAGS_IN_SERVICE
+            not dl
+            and byte [ds:si + KEYBOARD_EVENT_HANDLE_FLAGS], dl
+
+            .next_entry:
+                cmp word [ds:si + KEYBOARD_EVENT_HANDLE_NEXT_SEGMENT], 0
+                jz .check_events_done
+
+                push word [ds:si + KEYBOARD_EVENT_HANDLE_NEXT_SEGMENT]
+                push word [ds:si + KEYBOARD_EVENT_HANDLE_NEXT_OFFSET]
+                pop si
+                pop ds
+                jmp .check_events_loop
+            
+        .check_events_done:
+            pop ds
+            ret
+
     .previous_call_extended db 0 ; indicates if the previous callback returned with an extended identifier
+    .event_in_service_scancode db 0
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
@@ -503,6 +621,258 @@ keyboard_is_function_key_pressed:
         pop bx
         pop cx
         pop dx
+        iret
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Keyboard event registration
+; Keyboard event handling code needs to exit with a retf instruction
+;
+; input:
+;   ah -> Flags
+;       (Modifiers)
+;       1 : Shift
+;       2 : Ctrl
+;       4 : Alt
+;       (Options)
+;     128 : de-register the event -> bx:dx is returned event handler
+;   al -> Scancode (extended scan codes are not supported!) (msb is 1 for event on key release instead of key down)
+;   bx:dx -> Target address (event handler)
+; output:
+;   bx:dx -> Event handler (for deregistering the event)
+;-------------------------------------------------------------------------------
+; Event handle:
+;   0x00 (2 Bytes) Next element segment
+;   0x02 (2 Bytes) Next element offset
+;   0x04 (1 Byte)  Flags
+;       (Modifiers)
+;       1 : Shift
+;       2 : Ctrl
+;       4 : Alt
+;       (Options)
+;     128 : event in service -> Target already called and not yet returned
+;   0x05 (1 Byte)  Scancode / Function key code
+;   0x06 (2 Bytes) Target segment
+;   0x08 (2 Bytes) Target offset
+;   0x0a (6 Bytes) Unused
+;-------------------------------------------------------------------------------
+keyboard_event_registrator:
+    ;sti ; Do not allow interrupts -> Keyboard interrupt will then call to an undefined list element
+
+    push es
+    push ds
+    push di
+    push si
+
+    test ah, 0b10000000
+    jnz .deregister
+
+    mov [cs:.target_segment], bx
+    mov [cs:.target_offset], dx
+
+    ; register event -> create new variable
+    push ax
+        mov ax, 16
+        int 0xb8 ; Reserve 16 bytes
+        mov es, bx
+        mov di, dx
+    pop ax
+
+    mov [es:di + KEYBOARD_EVENT_HANDLE_FLAGS], ah
+    mov [es:di + KEYBOARD_EVENT_HANDLE_SCANCODE], al
+    push bx
+    push dx
+        mov bx, [cs:.target_segment]
+        mov dx, [cs:.target_offset]
+        mov [es:di + KEYBOARD_EVENT_HANDLE_TARGET_SEGMENT], bx
+        mov [es:di + KEYBOARD_EVENT_HANDLE_TARGET_OFFSET], dx
+    pop dx
+    pop bx
+
+    ; check if there are already event handlers
+    cmp word [cs:keyboard_event_handler_segment_start], 0
+    jz .create_first_handler
+
+    ; append handler
+    call .get_last_element
+    mov [ds:si + KEYBOARD_EVENT_HANDLE_NEXT_SEGMENT], es
+    mov [ds:si + KEYBOARD_EVENT_HANDLE_NEXT_OFFSET], di
+    jmp .done
+
+    .create_first_handler:
+        mov word [cs:keyboard_event_handler_segment_start], es
+        mov word [cs:keyboard_event_handler_offset_start], di
+        jmp .done
+
+    ; loads the last element into ds:si
+    ; at least one element needs to exist
+    .get_last_element:
+        mov ds, [cs:keyboard_event_handler_segment_start]
+        mov si, [cs:keyboard_event_handler_offset_start]
+        .get_last_element_next:
+            cmp word [ds:si + KEYBOARD_EVENT_HANDLE_NEXT_SEGMENT], 0
+            jz .get_last_element_done
+
+            push word [ds:si + KEYBOARD_EVENT_HANDLE_NEXT_SEGMENT]
+            push word [ds:si + KEYBOARD_EVENT_HANDLE_NEXT_OFFSET]
+            pop si
+            pop ds
+            jmp .get_last_element_next
+
+        .get_last_element_done:
+            ret
+
+    .deregister:
+        cmp word [cs:keyboard_event_handler_segment_start], 0
+        jz .done ; There is no list entry -> end without deallocating anything
+
+        ; Check if first entry is the searched one
+        mov ds, [cs:keyboard_event_handler_segment_start]
+        mov si, [cs:keyboard_event_handler_offset_start]
+        mov ax, ds
+        cmp ax, bx
+        jnz .deregister_search_loop
+        cmp si, dx
+        jnz .deregister_search_loop
+
+        ; First element is requested element to deregister
+        mov ax, 16
+        ; bx and dx already set
+        int 0xb9 ; deallocate 16 bytes
+
+        mov word [cs:keyboard_event_handler_segment_start], 0
+        mov word [cs:keyboard_event_handler_offset_start], 0
+
+        jmp .done
+
+        ; Search for list element with segment:offset = bx:dx
+        .deregister_search_loop:
+            ; Previous element -> used to chain the previous to the next element, unchaining the searched entry
+            push ds
+            pop es
+            mov di, si
+
+            ; Get next element
+            push word [ds:si + KEYBOARD_EVENT_HANDLE_NEXT_SEGMENT]
+            push word [ds:si + KEYBOARD_EVENT_HANDLE_NEXT_OFFSET]
+            pop si
+            pop ds
+
+            mov ax, ds
+            cmp ax, 0
+            jz .done ; Last element checked -> Element to deallocate not inside list
+
+            cmp ax, bx
+            jnz .deregister_search_loop
+            cmp si, dx
+            jnz .deregister_search_loop
+
+        ; Element to deregister found and loaded to ds:si, previous element loaded to es:di
+        ; Check if element to deregister is the last element
+        cmp word [ds:si + KEYBOARD_EVENT_HANDLE_NEXT_SEGMENT], 0
+        jz .deallocate_last
+
+        ; Rechain the previous element (es:di) to the element after the one being deallocated
+        push bx
+        push dx
+            mov bx, [ds:si + KEYBOARD_EVENT_HANDLE_NEXT_SEGMENT]
+            mov dx, [ds:si + KEYBOARD_EVENT_HANDLE_NEXT_OFFSET]
+            mov [es:di + KEYBOARD_EVENT_HANDLE_NEXT_SEGMENT], bx
+            mov [es:di + KEYBOARD_EVENT_HANDLE_NEXT_OFFSET], dx
+        pop dx
+        pop bx
+
+        jmp .after_rechain
+
+        ; remove chain link in previous entry
+        .deallocate_last:
+            mov word [es:di + KEYBOARD_EVENT_HANDLE_NEXT_SEGMENT], 0
+            mov word [es:di + KEYBOARD_EVENT_HANDLE_NEXT_OFFSET], 0
+
+        ; deallocate element in bx:dx
+        .after_rechain:
+            mov ax, 16
+            ; bx and dx already set
+            int 0xb9 ; deallocate 16 bytes
+            jmp .done
+       
+    .done:
+        pop si
+        pop di
+        pop ds
+        pop es
+        iret
+
+    .target_segment dw 0
+    .target_offset dw 0
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Returns the scancode for an ascii character
+;
+; input:
+;   al -> ASCII character
+;
+; output:
+;   al -> Scancode 
+;       (0x00 if ascii character not in current keymap)
+;       (only works for non extended scan codes!)
+;-------------------------------------------------------------------------------
+keyboard_ascii_to_scancode:
+    push ds
+    push si
+    push bx
+    push cx
+    push dx
+
+    mov ch, ah ; backup ah -> reset ah later without using the stack
+    mov ah, al ; save character in ah
+
+    push cs
+    pop ds
+    mov si, keyboard_keymap
+
+    mov bx, [ds:si + KEYBOARD_KEYMAP_TABLE_END_IDENT_OFFSET]
+
+    ; Load table start to ds:si
+    mov dx, [ds:si + KEYBOARD_KEYMAP_TABLE_START_IDENT_OFFSET]
+    add si, dx
+
+    .loop:
+        ; skip extended scan codes
+        cmp byte [ds:si], KEYBOARD_EXTENDED_SCAN_CODE
+        jz .next_entry
+
+        ; save current scancode
+        mov al, [ds:si + KEYBOARD_KEYMAP_SCANCODE_OFFSET]
+
+        ; check every entry for one scan code
+        cmp [ds:si + KEYBOARD_KEYMAP_SCANCODE_OFFSET + 1], ah ; ascii lower
+        jz .done
+        cmp [ds:si + KEYBOARD_KEYMAP_SCANCODE_OFFSET + 2], ah ; ascii higher
+        jz .done
+        cmp [ds:si + KEYBOARD_KEYMAP_SCANCODE_OFFSET + 3], ah ; alt_gr modifier
+        jz .done
+
+        ; load next entry (if any)
+        .next_entry:
+            cmp si, bx
+            jnae .return_not_found
+
+            add si, KEYBOARD_KEYMAP_LINE_BYTES ; next table entry
+            jmp .loop
+
+    .return_not_found:
+        mov al, 0x00
+        jmp .done
+
+    .done:
+        mov ah, ch ; reset ah
+        pop dx
+        pop cx
+        pop bx
+        pop si
+        pop ds
         iret
 ;-------------------------------------------------------------------------------
 
