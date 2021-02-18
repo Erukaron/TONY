@@ -37,6 +37,22 @@ FAT_READ_RETRIES            equ 8
 FAT_DISK_OPERATION_IDENT    equ '.'
 FAT_FILE_HANDLE_SIZE        equ 32
 
+; Root dir constants
+FAT_RD_ENTRY_LENGTH         equ 32
+FAT_RD_NAME_OFFSET          equ 0x00
+FAT_RD_EXT_OFFSET           equ 0x08
+FAT_RD_ATTRIB_OFFSET        equ 0x0b
+    FAT_RD_ATTRIB_READ_ONLY_OFFSET      equ 0x01
+    FAT_RD_ATTRIB_HIDDEN_OFFSET         equ 0x02
+    FAT_RD_ATTRIB_SYSTEM_OFFSET         equ 0x04
+    FAT_RD_ATTRIB_VOLUME_LBL_OFFSET     equ 0x08
+    FAT_RD_ATTRIB_SUB_DIR_OFFSET        equ 0x10
+    FAT_RD_ATTRIB_ARCHIVE_OFFSET        equ 0x20
+    FAT_RD_ATTRIB_DEVICE_OFFSET         equ 0x40
+FAT_RD_CLUSTER_OFFSET       equ 0x1a
+FAT_RD_SIZE_OFFSET          equ 0x1c
+
+
 FAT_FILE_HANDLE_OFFSET_CURSOR               equ 0x0b
 FAT_FILE_HANDLE_OFFSET_FILE_SIZE_CLUSTER    equ 0x0f
 FAT_FILE_HANDLE_OFFSET_SEGMENT              equ 0x11
@@ -362,7 +378,8 @@ fat_inc_load_file:
             je .start_cluster_ok
 
             push ax
-                call .calculate_next_cluster
+                mov ax, [cs:.cluster] 
+                call calculate_next_cluster
                 mov word [cs:.cluster], dx ; next cluster
                 cmp dx, 0x0ff0 ; end of file marker
                 jb .advance_to_start_cluster_no_eof
@@ -409,40 +426,12 @@ fat_inc_load_file:
         push es
 
         ; Get the next cluster from fat
-        call .calculate_next_cluster
+        mov ax, [cs:.cluster] 
+        call calculate_next_cluster
         mov word [cs:.cluster], dx ; next cluster
         cmp dx, 0x0ff0 ; end of file marker
         jb .load_file_stage2
         jmp .no_error
-
-    .calculate_next_cluster:
-        mov ax, FAT_SEGMENT
-        mov es, ax
-        mov bx, FAT_OFFSET
-
-        push cx
-            mov ax, word [cs:.cluster] ; current cluster
-            mov cx, ax
-            mov dx, ax
-            shr dx, 1 ; divide by 2
-            add cx, dx ; sum for 3/2 cluster
-
-            add bx, cx ; index for file in fat
-            mov dx, word [es:bx] ; read two bytes (16 bit (but we only need 12) from fat)
-        pop cx
-        test ax, 1
-        jnz .odd_cluster
-
-        .even_cluster:
-            and dx, 0000111111111111b ; take 12 lsb
-            jmp .done_cluster_arithmetic
-
-        .odd_cluster:
-            shr dx, 4 ; take 12 msb 
-            jmp .done_cluster_arithmetic
-
-        .done_cluster_arithmetic:
-            ret
 
     .no_error:
         clc ; No error 
@@ -457,6 +446,48 @@ fat_inc_load_file:
 
     .cluster dw 0
     .loaded_sectors dw 0
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Calculates the next cluster
+;
+; input:
+;   ax -> current cluster
+;
+; output:
+;   dx -> next cluster
+;   ax -> cluster passed via stack
+;   es:bx -> index for file in fat
+;-------------------------------------------------------------------------------
+calculate_next_cluster:
+    push ax
+        mov ax, FAT_SEGMENT
+        mov es, ax
+        mov bx, FAT_OFFSET
+    pop ax
+
+    push cx
+        mov cx, ax
+        mov dx, ax
+        shr dx, 1 ; divide by 2
+        add cx, dx ; sum for 3/2 cluster
+
+        add bx, cx ; index for file in fat
+        mov dx, word [es:bx] ; read two bytes (16 bit (but we only need 12) from fat)
+    pop cx
+    test ax, 1
+    jnz .odd_cluster
+
+    .even_cluster:
+        and dx, 0000111111111111b ; take 12 lsb
+        jmp .done_cluster_arithmetic
+
+    .odd_cluster:
+        shr dx, 4 ; take 12 msb 
+        jmp .done_cluster_arithmetic
+
+    .done_cluster_arithmetic:
+        ret
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
@@ -592,38 +623,40 @@ fat_read_device:
 ;-------------------------------------------------------------------------------
 fat_write_device:
     push di
-    mov di, FAT_READ_RETRIES ; retries for error
 
-    .try_write:
-        push ax
-        push bx
-        push cx
+    .next_sector: 
+        mov di, FAT_READ_RETRIES ; retries for error
 
-        push bx
-            mov bl, dl ; remember device
-            mov dx, ax
+        .try_write:
+            push ax
+            push bx
+            push cx
 
-            int 0xe2 ; Convert lba to chs
+            push bx
+                mov bl, dl ; remember device
+                mov dx, ax
 
-            mov dl, bl
-        pop bx
+                int 0xe2 ; Convert lba to chs
 
-        mov ah, 0x03 ; Write device es:bx
-        mov al, 0x01 ; Number of sectors to write
-        int 0x13
-        jnc .done ; test if succeeded
+                mov dl, bl
+            pop bx
 
-        xor ax, ax ; Reset disk
-        int 0x13
-        dec di ; decrement error counter
-        pop cx
-        pop bx
-        pop ax
-        jnz .try_write ; attempt to read again
+            mov ah, 0x03 ; Write device es:bx
+            mov al, 0x01 ; Number of sectors to write
+            int 0x13
+            jnc .done ; test if succeeded
 
-        pop di
-        stc
-        ret
+            xor ax, ax ; Reset disk
+            int 0x13
+            dec di ; decrement error counter
+            pop cx
+            pop bx
+            pop ax
+            jnz .try_write ; attempt to read again
+
+            pop di
+            stc
+            ret
 
     .done:
         int 0xcf ; Feedback disk operation
@@ -633,7 +666,7 @@ fat_write_device:
         pop ax
         add bx, word [cs:bpbBytesPerSector] ; next sector
         inc ax ; read next sector
-        loop fat_read_device ; repeat until cx sectors are read
+        loop .next_sector ; repeat until cx sectors are read
         pop di
         clc 
         ret
@@ -836,8 +869,164 @@ fat_open:
         pop di
         pop es
 
-        ; Create file in fat and root dir
-        jmp .not_impl
+        ; 1) Find free cluster in FAT
+        push es
+        push bx
+            mov ax, 0 ; starting cluster
+            .search_free_cluster:
+                call calculate_next_cluster
+                cmp dx, 0
+                je .free_cluster_found
+                inc ax
+                jmp .search_free_cluster
+
+            ; 2) Block cluster in FAT (setting to FFF)
+            .free_cluster_found:
+                mov dx, 0xfff
+                test ax, 1
+                jz .free_cluster_done ; even cluster, dx is already set correctly
+
+                .free_cluster_odd:
+                    shl dx, 4 ; take 12 msb 
+
+                .free_cluster_done:
+                    or [es:bx], dx
+        pop bx
+        pop es
+
+        ; ax contains file starting cluster
+        ; 3) Find next free ROOT DIR entry
+        push es
+        push di
+            push ROOT_SEGMENT
+            pop es
+            mov di, ROOT_OFFSET
+
+            push cx
+            mov cx, word [cs:bpbRootEntries]
+
+            .create_new_loop_root_dir:
+                cmp byte [es:di + FAT_RD_NAME_OFFSET], 0
+                jz .root_offset_found
+
+                add di, FAT_RD_ENTRY_LENGTH
+                loop .create_new_loop_root_dir
+                jmp .root_dir_space_error
+
+            .root_dir_space_error:
+                mov bp, -1
+                pop cx
+                pop di
+                pop es
+                pop bx
+                jmp .done
+
+            .root_offset_found:
+                pop cx
+
+                ; ax contains file starting cluster
+                ; ds:si contains filename
+                ; 4) es:di = root dir entry -> Write filename, flags, size of 0 and FAT cluster to it
+    
+                ; get filename in fat format
+                push es
+                push di
+                    push cs
+                    pop es
+                    mov di, fat_ident_buffer
+                    call fat_transform_filename_fat_format
+                pop di
+                pop es
+
+                ; load filename in fat format to ds:si
+                push ds
+                push si
+                push di
+                    push cs
+                    pop ds
+                    mov si, fat_ident_buffer
+
+                    ; write it to root dir
+                    push cx
+                        mov cx, FAT_IDENT_LENGTH
+                        cld
+                        rep movsb
+                    pop cx
+                pop di
+                pop si
+                pop ds
+
+                ; write flags
+                push dx
+                    xor dx, dx
+                    mov [es:di + FAT_RD_ATTRIB_OFFSET], dl
+                pop dx
+
+                ; write starting cluster
+                mov [es:di + FAT_RD_CLUSTER_OFFSET], ax
+
+                ; write size (should be zero, but to be sure...)
+                mov word [es:di + FAT_RD_SIZE_OFFSET], 0
+                mov word [es:di + FAT_RD_SIZE_OFFSET + 2], 0
+
+                push ax
+                push bx
+                push cx
+                push dx
+                push es
+                    ; Rewrite ROOT DIR
+                    ; Calculate size of root directory (cx)
+                    xor cx, cx
+                    xor dx, dx
+                    mov ax, FAT_RD_ENTRY_LENGTH ; Every entry is 32 bytes long
+                    mul word [cs:bpbRootEntries] ; Multiply by the number of root entries
+                    div word [cs:bpbBytesPerSector] ; Get the size of the root directory in sectors
+                    xchg ax, cx ; Store in cx
+
+                    ; Calculate location of root directory (ax)
+                    mov al, byte [cs:bpbNumberOfFATs]
+                    mul word [cs:bpbSectorsPerFAT]
+                    add ax, word [cs:bpbReservedSectors] ; Add bootsector and other reserved sectors
+
+                    mov dl, [cs:fat_current_drive] ; drive
+
+                    ; write buffer
+                    push word ROOT_SEGMENT
+                    pop es
+                    mov bx, ROOT_OFFSET
+
+                    call fat_write_device
+                    jc .critical_write_error ; error on write
+
+                    ; Rewrite FAT 
+                    ; Calculate fat size
+                    xor ax, ax
+                    ;mov al, byte [bpbNumberOfFATs]
+                    ; Lets just write one FAT, as the second one is redundant
+                    mov al, 1
+                    mul word [cs:bpbSectorsPerFAT]
+                    mov cx, ax
+
+                    ; Calculate fat location
+                    mov ax, word [cs:bpbReservedSectors]
+
+                    mov dl, [cs:fat_current_drive] ; drive
+
+                    ; write buffer
+                    push word FAT_SEGMENT
+                    pop es
+                    mov bx, FAT_OFFSET
+
+                    call fat_write_device
+                    jc .critical_write_error ; error on write
+                pop es
+                pop dx
+                pop cx
+                pop bx
+                pop ax
+        pop di
+        pop es
+
     jmp .allocate_file_address
     .file_exists:
         ; if file exists, write file size to file handle
@@ -925,25 +1114,26 @@ fat_open:
         mov bp, -1 ; error code
     jmp .done
 
+    .critical_write_error:
+        push cs
+        pop ds
+        mov si, .critical_write_error_msg
+        mov al, 4 ; critical
+        int 0x97
+        cli
+        hlt
+        .hang_write_error:
+            nop
+            jmp .hang_write_error
+
     .done:
         pop si
         pop ds
         iret
 
-    .not_impl:
-        xchg bx, bx
-        push cs
-        pop ds
-        mov si, NOT_IMPLEMENTED
-        int 0x91
-        cli 
-        hlt
-        .hang:
-        nop
-        jmp .hang
-
     .handle_segment dw 0
     .handle_offset dw 0
+    .critical_write_error_msg db "Error while writing root dir or fat to disk in kernel function fat_open! Halting system!", 0
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
@@ -1225,6 +1415,7 @@ fat_write_next_byte:
     ; 4) Increase file size in file handle
     ; 5) Write sector in memory to disk
     ; 6) Write file information from file handle to root directory (size)
+
     sti ; Allow hardware interrupts to occur while processing software interrupts
 
     xchg bx, bx

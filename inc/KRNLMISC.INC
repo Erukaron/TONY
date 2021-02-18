@@ -33,7 +33,7 @@ MLT_BUFFER_SIZE     equ 80
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
-; Starts the machine language terminal (COSIC-Interpreter)
+; Starts the machine language terminal 
 ;
 ; input: 
 ;   none
@@ -54,8 +54,6 @@ mlt_start:
     push cs
     pop es
 
-    ; ToDo: Create 32k Buffer
-
     .loop:
         mov al, '*'
         int 0x90
@@ -73,74 +71,10 @@ mlt_start:
         mov di, .mlt_buffer
         int 0xb1 ; read line
 
-        ; ToDo: first Line is numeric?
-            ; For every line in buffer split on space
-
-
-            ; see:
-                    ; Adds the string located at ds:si to the basic memory
-                    ; 1: String containing line number (DS:BX) (in ascii decimal form!)
-                    ; 2: String to add to memory (DS:SI)
-                    ; Operation:
-                    ; 1. Set Pointers to start of basic segment
-                    ; 2. Check Current line number against parameter line number
-                    ;   2.0. Get line number from current line
-                    ;   2.1. Check if current line number is bigger than parameter line number 
-                    ;       2.1.1. Parameter line number is bigger: Set current line pointer to start of next line
-                    ;       2.1.2. Parameter line number is smaller
-                    ;           2.1.2.1. Get Size of parameter line number + ' ' + command -> n
-                    ;           2.1.2.2. Check if enough space for adding (quit, if not)
-                    ;           2.1.2.3. Shift every character from last entry to current entry for n bytes
-                    ;           2.1.2.4. Fill parameter line number + ' ' + command + 0
-                    ;       2.1.3. Parameter line number is equal
-                    ;           2.1.3.1. Get Size of parameter line number + ' ' + command -> n
-                    ;           2.1.3.2. Get Size of current entry -> m
-                    ;           2.1.3.3. If new entry is bigger -> Shift for n-m bytes
-                    ;           2.1.3.4. If old entry is bigger -> Shift for n-m bytes in towards the beginning of memory
-                    ;           2.1.3.5. Insert entry
-                    ;   2.2. No next line -> Insert number + ' ' + command + 0 -> Update Next entry var
-
-
-            ; Exists line number?
-                ; Replace line -> Shift content
-            ; else
-                ; next line number greater than entered?
-                    ; insert line and shift rest
-                ; else
-                    ; insert line at end
-        ; else
-            ; run?
-                ; call routine -> remove every line number from buffer and loop over int 0xf3
-            ; list (<line> (to <line>))?
-                ; type buffer
-            ; new?
-                ; initialize buffer
-            ; else
-                ; process input as cosic instruction
-
         mov si, .mlt_buffer
         cmp word [es:si], 0
         jz .loop
 
-        ; ToDo: dh entsprechend setzen
-        int 0xf3
-
-        cmp al, 0
-        jz .loop ; no error
-
-        ; Get integer from al
-        mov dl, al
-        int 0xe4
-
-        mov al, 1
-        mov si, .cosic_error
-        int 0x97
-
-        mov al, dh
-        int 0x90
-        mov al, dl
-        int 0x90
-        call crlf
     jmp .loop
 
     pop ds
@@ -150,7 +84,6 @@ mlt_start:
 
     .mlt_buffer       times MLT_BUFFER_SIZE db 0
     .mlt_split_buffer times MLT_BUFFER_SIZE db 0
-    .cosic_error      db "COSIC errorcode: ", 0
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------

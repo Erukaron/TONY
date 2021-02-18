@@ -139,6 +139,22 @@ kernel_setup:
         .no_update_keymap:
     pop es
 
+    ; register keyboard hotkeys
+    mov al, ASCII_R
+    int 0xb4 ; get scancode from ascii char
+    ; al set to scancode
+    mov ah, 0b111 ; Alt, Ctrl, Shft
+    ; bios reset vector -> a jump to this location issues a reset
+    mov bx, 0xffff
+    mov dx, 0
+    int 0xb3
+
+    mov ah, 0
+    mov al, SCAN_CODE_F12
+    mov bx, cs
+    mov dx, oracle
+    int 0xb3
+
     ; check if gfx mode should be enabled
     mov ah, FUNC_KEY_F8
     int 0xb2
@@ -196,8 +212,6 @@ kernel_setup:
     .warn_no_gfx_mode db "GFX mode not enabled!", ASCII_CR, ASCII_LF, 0
     .after_gfx_mode:
 
-    ;call cosic_init
-
     ; check if shell exists
     mov si, shell_file
     int 0xc1
@@ -226,18 +240,18 @@ kernel_setup:
             push si
                 mov al, 0
                 mov si, .info_shell_param
-                int 0x97
+                int 0x97 ; print prefix
 
                 push es
                 pop ds
                 mov si, di
 
-                int 0x91
+                int 0x91 ; println
             pop si
             pop ds
         .after_shell_cmd:
 
-        int 0xf2
+        int 0xf2 ; call shell
         jmp .after_shell
     .no_shell:
         mov al, 2
@@ -254,38 +268,26 @@ kernel_setup:
     .error_no_shell_file db "Shell does not exist!", ASCII_CR, ASCII_LF, 0
     .empty_shell_cmd db 0
     .after_shell:
+    
+    call test_code
 
     ; set default video mode and start mlt
-    ;call display_restore_default_kernel_video_mode
-    ;int 0x95
-
-    ; register keyboard hotkeys
-    mov al, ASCII_R
-    int 0xb4 ; get scancode from ascii char
-    ; al set to scancode
-    mov ah, 0b111 ; Alt, Ctrl, Shft
-    ; bios reset vector -> a jump to this location issues a reset
-    mov bx, 0xffff
-    mov dx, 0
-    int 0xb3
-
-    mov ah, 0
-    mov al, SCAN_CODE_F12
-    mov bx, cs
-    mov dx, oracle
-    int 0xb3
-    
-    push cs
-    pop ds
-    mov si, test_file
-    int 0xc2
-    test_file db "TESTFILE.TST", 0
-
-    ; Start mlt
-    int 0xf0
+    call display_restore_default_kernel_video_mode
+    int 0x95 ; cls
+    int 0xf0 ; mlt
 
     cli
-    hlt
+    jmp 0xffff:0 ; reset vector
+
+    test_code:
+        push cs
+        pop ds
+        mov si, test_file
+        int 0xc2
+
+        ret
+
+    test_file db "TESTFILE.TST"
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
@@ -539,10 +541,6 @@ install_misc:
     mov al, 0xf2
     mov bx, misc_start_com
     call kernel_install_interrupt
-
-    ;mov al, 0xf3
-    ;mov bx, cosic_execute
-    ;call kernel_install_interrupt
 
     mov al, 0xf4
     mov bx, timer_create_random_number

@@ -54,12 +54,21 @@ Bei Fehlender Keyboard Datei halten
 [ ] File open interrupt gibt file zurück mit Adresse, Anfangsposition fat, aktuelles Cluster der Datei im Speicher ; mit file read line interrupt bis eof durch Datei lesen ; mit write Schreiben und mit close Speicher freigeben 
     [x] Lesen
     [ ] Schreiben
+[x] Jump to reset vector am Kernelende
 [ ] MLT (Machine Monitor) vgl. Apple 2 -> lesen (Zahl eingeben) von N Byte (zahl1-zahl2), schreiben von N Byte (addr zahl: zahl1 zahl2...), ausführen an bestimmter Stelle (zahlR/zahlG)
+    [ ] Automatisch am Kernelende aufrufen
+    [ ] Aufruf über Strg+Alt+Entf
+    [ ] Verlassen über ESC für 3 Sekunden gerdückt halten
+        [ ] Dauerschleife -> Check ob ESC gehalten, wenn nicht Schleife verlassen, nicht beenden, wenn ja -> 3 Sekunden Timer runter zählen und checken ob esc weiter gehalten
 [ ] Eventanmeldung für Timer
-[ ] Mausinterrupts bc - bf -> Position lesen (Tasten + Posi), setzen (Posi), Hinzufügen / entfernen von Aufruf  einer Funktion bei bestimmtem Event, Einstellungen (Cursor aktivieren/deaktivieren, Geschwindigkeit, etc.)
+[ ] Mausinterrupts bc - bf -> Position lesen (Tasten + Posi), setzen (Posi), Hinzufügen / entfernen von Aufruf  einer Funktion bei bestimmtem Event, Einstellungen (Cursor aktivieren/deaktivieren, Cursor anzeigen/ausblenden, Geschwindigkeit, etc.)
 [ ] Keyboard Capslock und numlock (inkl. leds)
 [ ] Interrupt exceptions umprogrammieren -> Fehlermeldung geben / aktuelles Programm beenden
     Ab Interrupt exception 8 (auch hardware interrupt) im pic prüfen, ob hardware interrupt, falls nicht exception
+[ ] Ggf. stack memory senken
+[ ] Sound interrupts
+
+
 [ ] Fallout Hacking Login Game -> Über Shellparameter von Shell nachladbar
     [ ] Animation -> Time based -> -auto
     [ ] Animation -> Upon key stroke -> -keystroke
