@@ -128,15 +128,24 @@ str_contains:
         test byte [cs:.mode], 2
         jz .compare_casesensitive
 
-        ; only check caseinsensitive, if al is a character A-Z or a-z
+        ; only check caseinsensitive, if al and ah is a character A-Z or a-z
         cmp al, ASCII_A
-        jl .compare_casesensitive 
+        jb .compare_casesensitive 
         cmp al, ASCII_Z_LOWER
-        jg .compare_casesensitive 
+        ja .compare_casesensitive 
         cmp al, ASCII_Z
-        jle .compare_case_in_sensitive
+        jna .check_ah
         cmp al, ASCII_A_LOWER
-        jg .compare_casesensitive
+        jb .compare_casesensitive
+        .check_ah:
+            cmp ah, ASCII_A
+            jb .compare_casesensitive 
+            cmp ah, ASCII_Z_LOWER
+            ja .compare_casesensitive 
+            cmp ah, ASCII_Z
+            jna .compare_case_in_sensitive
+            cmp ah, ASCII_A_LOWER
+            jb .compare_casesensitive
 
         .compare_case_in_sensitive:
             cmp al, ah

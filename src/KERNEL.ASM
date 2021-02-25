@@ -101,6 +101,22 @@ kernel_setup:
     mov si, keymap_file_initial
     call keyboard_set_intial_keymap
 
+    ; register keyboard hotkeys
+    mov al, ASCII_R
+    int 0xb4 ; get scancode from ascii char
+    ; al set to scancode
+    mov ah, 0b111 ; Alt, Ctrl, Shft
+    ; bios reset vector -> a jump to this location issues a reset
+    mov bx, 0xffff
+    mov dx, 0
+    int 0xb3
+
+    mov ah, 0
+    mov al, SCAN_CODE_F12
+    mov bx, cs
+    mov dx, oracle
+    int 0xb3
+
     ; check if config should be read
     mov ah, FUNC_KEY_F7
     int 0xb2
@@ -138,22 +154,6 @@ kernel_setup:
             call keyboard_set_intial_keymap
         .no_update_keymap:
     pop es
-
-    ; register keyboard hotkeys
-    mov al, ASCII_R
-    int 0xb4 ; get scancode from ascii char
-    ; al set to scancode
-    mov ah, 0b111 ; Alt, Ctrl, Shft
-    ; bios reset vector -> a jump to this location issues a reset
-    mov bx, 0xffff
-    mov dx, 0
-    int 0xb3
-
-    mov ah, 0
-    mov al, SCAN_CODE_F12
-    mov bx, cs
-    mov dx, oracle
-    int 0xb3
 
     ; check if gfx mode should be enabled
     mov ah, FUNC_KEY_F8
@@ -378,6 +378,14 @@ install_display:
 
     mov al, 0x97
     mov bx, display_prefix_print
+    call kernel_install_interrupt
+
+    mov al, 0x98
+    mov bx, display_get_screen_pos
+    call kernel_install_interrupt
+
+    mov al, 0x99
+    mov bx, display_set_screen_pos
     call kernel_install_interrupt
 
     mov si, .wait_msg

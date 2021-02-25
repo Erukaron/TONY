@@ -76,7 +76,6 @@ TONY interrupts:
     Sleep milliseconds
     input: 
         AX -> milli seconds
-
     output:
         none
 -------------------------------------------------
@@ -84,10 +83,10 @@ TONY interrupts:
     Sleep seconds
     input: 
         AX -> seconds
-
     output:
         none
 -------------------------------------------------
+
 
 
 
@@ -147,7 +146,7 @@ TONY interrupts:
 0x93
     Switch the video mode
     input: 
-        AL -> Video mode (0 : Textmode 40x25, 1 : Textmode 80x25, 2 : Videomode 320x200)
+        AL -> Video mode (0b0010001 : Textmode 40x25, 0b1000010 : Textmode 80x25, 0b1000010 : Videomode 320x200)
     output:
         none
 -------------------------------------------------
@@ -172,7 +171,7 @@ TONY interrupts:
     input: 
         none
     output:
-        AL -> Video mode (0 : Textmode 80x25, 1 : Videomode 320x200)
+        AL -> Video mode (0b0100010 : Textmode 80x25, 0b1000010 : Videomode 320x200)
 -------------------------------------------------
 0x97
     Print string with prefix
@@ -183,6 +182,23 @@ TONY interrupts:
             2: Error
             4: Critical
         DS:SI -> 0 terminated string
+    output:
+        none
+-------------------------------------------------
+0x98
+    Get current screen position
+    input:
+        none
+    output:
+        AL -> Video mode
+        BX -> X-position
+        DX -> Y-Position
+-------------------------------------------------
+0x99
+    Set current screen position
+    input:
+        BX -> X-position
+        DX -> Y-Position
     output:
         none
 -------------------------------------------------
@@ -219,6 +235,7 @@ TONY interrupts:
 0xb3
     Keyboard event registration
     Keyboard event handling code needs to exit with a retf instruction
+    All registers (except stack) are restored after the keyboard event
     input:
         ah -> Flags
             (Modifiers)

@@ -143,7 +143,7 @@ display_set_blink_mode:
 ; Switches the video mode
 ;
 ; input: 
-;   AL -> Video mode (0 : Texmode 40x25, 1 : Textmode 80x25, 2 : Videomode 320x200)
+;   AL -> Video mode (0b0010001 : Texmode 40x25, 0b0100010 : Textmode 80x25, 0b1000010 : Videomode 320x200)
 ;
 ; output:
 ;   none
@@ -196,7 +196,7 @@ display_switch_video_mode:
 ;   none
 ;
 ; output:
-;   AL -> Video mode (0 : Texmode 40x25, 1 : Textmode 80x25, 2 : Videomode 320x200)
+;   AL -> Video mode (0b0010001 : Texmode 40x25, 0b0100010 : Textmode 80x25, 0b1000010 : Videomode 320x200)
 ;-------------------------------------------------------------------------------
 display_get_video_mode:
     sti ; Allow hardware interrupts to occur while processing software interrupts
@@ -374,6 +374,24 @@ display_putch:
     cmp al, BACKSPACE
     je .bs
 
+    cmp al, ASCII_FIRST_PRINTABLE_CHAR
+    jnl .lo_ok
+        ; char not printable
+        pop es
+        popa
+        mov al, ASCII_DOT
+        jmp display_putch
+    .lo_ok:
+
+    cmp al, ASCII_LAST_PRINTABLE_CHAR
+    jng .hi_ok
+        ; char not printable
+        pop es
+        popa
+        mov al, ASCII_DOT
+        jmp display_putch
+    .hi_ok:
+
     ; calculate character location
     ; video memory is linear -> desired location is posX + posY * Number of cols (NOT maxX position!)
     xor ax, ax
@@ -537,6 +555,24 @@ display_gfx_putch:
 
     cmp al, BACKSPACE
     je .bs
+
+    cmp al, ASCII_FIRST_PRINTABLE_CHAR
+    jnl .lo_ok
+        ; char not printable
+        pop es
+        popa
+        mov al, ASCII_DOT
+        jmp display_putch
+    .lo_ok:
+
+    cmp al, ASCII_LAST_PRINTABLE_CHAR
+    jng .hi_ok
+        ; char not printable
+        pop es
+        popa
+        mov al, ASCII_DOT
+        jmp display_putch
+    .hi_ok:
 
     mov bx, [cs:display_gfx_current_x]
     add bx, DISPLAY_GFX_FONT_WIDTH - 1 ; at least four pixels for character
@@ -1018,6 +1054,68 @@ display_prefix_print:
     .prefix_warning db "WARNING", 0
     .prefix_error db "ERROR", 0
     .prefix_critical db "CRITICAL", 0
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Get current screen position
+;
+; input: 
+;   none
+;
+; output:
+;   BX -> X-position
+;   DX -> Y-position
+;-------------------------------------------------------------------------------
+display_get_screen_pos:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+
+    cmp byte [cs:display_video_mode], VIDEOMODE_GFX_320_200_COLOR
+    jz .gfx_mode
+
+    ; text mode
+    xor bx, bx
+    xor dx, dx
+    mov bl, [cs:display_current_x]
+    mov dl, [cs:display_current_y]
+    jmp .done
+
+    .gfx_mode:
+    xor dx, dx
+    mov bx, [cs:display_gfx_current_x]
+    mov dl, [cs:display_gfx_current_y]
+
+    .done:
+        iret
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Set current screen position
+;
+; input: 
+;   BX -> X-position
+;   DX -> Y-position
+;
+; output:
+;   none
+;-------------------------------------------------------------------------------
+display_set_screen_pos:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+
+    cmp byte [cs:display_video_mode], VIDEOMODE_GFX_320_200_COLOR
+    jz .gfx_mode
+
+    ; text mode
+    mov [cs:display_current_x], bl
+    mov [cs:display_current_y], dl
+    jmp .done
+
+    .gfx_mode:
+    mov [cs:display_gfx_current_x], bx
+    mov [cs:display_gfx_current_y], dl
+
+    .done:
+        call display_update_cursor
+        iret
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------

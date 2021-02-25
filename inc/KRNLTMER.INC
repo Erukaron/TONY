@@ -98,6 +98,11 @@ timer_init:
 timer_callback:
     push ax
 
+    ;cmp byte [cs:timer_breakpoint_byte], 1
+    ;jnz .no_break
+    ;    xchg bx, bx
+    .no_break:
+
     mov ax, word [cs:timer_tick_count_lo]
     add ax, 1
     jnc .no_inc_hi
@@ -128,6 +133,8 @@ timer_callback:
     .done:
         pop ax
         iret
+
+    timer_breakpoint_byte db 0
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------

@@ -286,13 +286,14 @@ convert_unsigned_16bit_atoi:
         mov dx, 4
         mov di, .hex_value
         int 0xd3 ; copy string
+        xor dx, dx
 
         .hex_loop:
             mov al, [cs:di] ; Hex value
             cmp al, 0 ; Last entry
-            je .done
+            je .done_hex
             cmp byte [cs:.no_nibble], 4
-            je .done ; Maximum size
+            je .done_hex ; Maximum size
             cmp byte [cs:.no_nibble], 2
             jne .hex_conversion ; Jump if value is not exactly two
             mov dh, dl
@@ -328,6 +329,18 @@ convert_unsigned_16bit_atoi:
                     add byte [cs:.no_nibble], 1
                     inc di
                     jmp .hex_loop
+
+        .done_hex:
+            ; If 3 nibbles were entered, dx is in the following state: bb0b
+            ; In this case save dl low nibble, shift dx to the right and lastly or dl with the last nibble
+            cmp byte [cs:.no_nibble], 3
+            jnz .done
+            push ax
+                mov al, dl
+                shr dx, 4
+                or dl, al
+            pop ax
+            jmp .done
 
     .error:
         mov byte [cs:.convert_unsigned_16bit_atoi_error], TRUE

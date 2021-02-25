@@ -55,11 +55,11 @@ Bei Fehlender Keyboard Datei halten
     [x] Lesen
     [ ] Schreiben
 [x] Jump to reset vector am Kernelende
-[ ] MLT (Machine Monitor) vgl. Apple 2 -> lesen (Zahl eingeben) von N Byte (zahl1-zahl2), schreiben von N Byte (addr zahl: zahl1 zahl2...), ausführen an bestimmter Stelle (zahlR/zahlG)
-    [ ] Automatisch am Kernelende aufrufen
-    [ ] Aufruf über Strg+Alt+Entf
-    [ ] Verlassen über ESC für 3 Sekunden gerdückt halten
-        [ ] Dauerschleife -> Check ob ESC gehalten, wenn nicht Schleife verlassen, nicht beenden, wenn ja -> 3 Sekunden Timer runter zählen und checken ob esc weiter gehalten
+[x] MLT (Machine Monitor) vgl. Apple 2 -> lesen (Zahl eingeben) von N Byte (zahl1-zahl2), schreiben von N Byte (addr zahl: zahl1 zahl2...), ausführen an bestimmter Stelle (zahlR/zahlG)
+    [x] Automatisch am Kernelende aufrufen
+    [x] Aufruf über Strg+Alt+Entf
+    [x] Verlassen über ESC für 3 Sekunden gerdückt halten
+        [x] Dauerschleife -> Check ob ESC gehalten, wenn nicht Schleife verlassen, nicht beenden, wenn ja -> 3 Sekunden Timer runter zählen und checken ob esc weiter gehalten
 [ ] Eventanmeldung für Timer
 [ ] Mausinterrupts bc - bf -> Position lesen (Tasten + Posi), setzen (Posi), Hinzufügen / entfernen von Aufruf  einer Funktion bei bestimmtem Event, Einstellungen (Cursor aktivieren/deaktivieren, Cursor anzeigen/ausblenden, Geschwindigkeit, etc.)
 [ ] Keyboard Capslock und numlock (inkl. leds)

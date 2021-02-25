@@ -64,10 +64,20 @@ VIDEOMODE_BIOS_GFX_320_200_COLOR equ 0x13
 
 ;-------------------------------------------------------------------------------
 ; Video mode
+;  40x 25 text : Bit 5 set
+;  80x 25 text : Bit 6 set
+; 320x200 gfx  : Bit 7 set
+; Color mode: Bit 0 - Bit 1
+; Monochrome   : 00
+; Grayscale    : 01
+; Color        : 10
 ;-------------------------------------------------------------------------------
-VIDEOMODE_ASCII_GRAY_40x25  equ 0
-VIDEOMODE_ASCII_COLOR_80x25 equ 1
-VIDEOMODE_GFX_320_200_COLOR equ 2
+VIDEO_MODE_40x25            equ 0b0010000
+VIDEO_MODE_80x25            equ 0b0100000
+VIDEO_MODE_GFX_320x200      equ 0b1000000
+VIDEOMODE_ASCII_GRAY_40x25  equ 0b0010001
+VIDEOMODE_ASCII_COLOR_80x25 equ 0b0100010
+VIDEOMODE_GFX_320_200_COLOR equ 0b1000010
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------

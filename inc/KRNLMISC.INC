@@ -54,6 +54,17 @@ mlt_start:
     push cs
     pop es
 
+    mov [cs:.mlt_stack_offset], sp ; save stack pointer to restore on exit -> leave interrupt
+
+    ; register keyboard hotkey to quit mlt
+    mov al, SCAN_CODE_ESCAPE
+    mov ah, 0 ; no modifiers
+    mov bx, cs
+    mov dx, .check_exit
+    int 0xb3
+    mov [cs:.mlt_exit_event_hanlder_segment], bx
+    mov [cs:.mlt_exit_event_hanlder_offset], dx
+
     .loop:
         mov al, '*'
         int 0x90
@@ -75,15 +86,439 @@ mlt_start:
         cmp word [es:si], 0
         jz .loop
 
+        ; Check for input in the following form
+        ; S:O(M) (B)
+        ; S -> Segment
+        ; O -> Offset
+        ; M -> Mode
+        ;   R -> Run S:O
+        ;   W -> Write byte(s) B to S:O
+        ;   <empty> -> Read and display B bytes
+        ;   P -> Enable direct mode
+        ;       -> write bytes in hex form (prefix/suffix is ommited) directly and without space to S:O
+        ;       -> To quit direct mode enter q
+        ; B -> Bytes
+
+        ; split segment and offset
+        mov di, .mlt_split_buffer
+        mov ah, 0b10 ; terminate first and second part
+        mov al, ASCII_COLUMN
+        mov cx, MLT_BUFFER_SIZE
+        int 0xd4 ; split string
+        cmp [es:di], byte 0
+        jz .error
+        ; buffer contains segment
+        ; split buffer contains offset
+
+        int 0xe3 ; itoa
+        jc .error
+        mov [cs:.mlt_selected_segment], ax
+
+        ; split offset and bytes
+        mov si, .mlt_split_buffer
+        mov di, .mlt_buffer
+        mov ah, 0b10 ; terminate first and second part
+        mov al, ASCII_SP
+        mov cx, MLT_BUFFER_SIZE
+        int 0xd4 ; split string
+        ; buffer contains bytes (if any)
+        ; split buffer contains offset
+
+        ; Check for mode
+        mov byte [cs:.mlt_selected_mode], 0
+
+        mov ah, 0b10 ; string contains substring, ignore case
+        ; ds:si correct
+        mov di, .mlt_mode_run_id
+        int 0xd2
+        jc .no_run
+            mov byte [cs:.mlt_selected_mode], .MLT_MODE_RUN
+            mov dl, [cs:.mlt_mode_run_id]
+            int 0xd6 ; remove identification from string
+            jmp .no_read
+        .no_run:
+
+        mov ah, 0b10 ; string contains substring, ignore case
+        ; ds:si correct
+        mov di, .mlt_mode_write_id
+        int 0xd2
+        jc .no_write
+            mov byte [cs:.mlt_selected_mode], .MLT_MODE_WRITE
+            mov dl, [cs:.mlt_mode_write_id]
+            int 0xd6 ; remove identification from string
+            jmp .no_read
+        .no_write:
+
+        mov ah, 0b10 ; string contains substring, ignore case
+        ; ds:si correct
+        mov di, .mlt_mode_direct_id
+        int 0xd2
+        jc .no_direct
+            mov byte [cs:.mlt_selected_mode], .MLT_MODE_DIRECT
+            mov dl, [cs:.mlt_mode_direct_id]
+            int 0xd6 ; remove identification from string
+            jmp .no_read
+        .no_direct:
+
+        cmp byte [cs:.mlt_selected_mode], 0
+        jnz .no_read
+            mov byte [cs:.mlt_selected_mode], .MLT_MODE_READ
+        .no_read:
+
+        int 0xe3 ; itoa
+        jc .error
+        mov [cs:.mlt_selected_offset], ax
+
+        ; Jump according to mode and proceed with operation
+        cmp byte [cs:.mlt_selected_mode], .MLT_MODE_READ
+        jz .read
+        cmp byte [cs:.mlt_selected_mode], .MLT_MODE_DIRECT
+        jz .direct
+        cmp byte [cs:.mlt_selected_mode], .MLT_MODE_WRITE
+        jz .write
+        cmp byte [cs:.mlt_selected_mode], .MLT_MODE_RUN
+        jz .run
     jmp .loop
 
-    pop ds
-    pop es
-    popf
-    popa
+    .error:
+        mov si, .mlt_empty_dummy
+        mov al, 2 ; error
+        int 0x97
+
+        jmp .loop
+
+    .check_exit:
+        int 0x80 ; Get timer ticks (AX hi, DX lo)
+        push ax
+        push dx
+            mov ax, TIMER_TICKS_TO_MS
+            mov cx, 3000 ; Wait 3 seconds before exiting
+            mul cx
+            ; cx:bx are the timer ticks to add to the current timer tick amount to reach 3 seconds
+            mov cx, dx
+            mov bx, ax
+        pop dx
+        pop ax
+
+        xchg ax, dx ; dx:ax contains the current timer tick amount
+        mov bp, 0 ; prepare 32-bit addition
+        int 0x8e
+        cmp bp, 0
+        jnz .check_exit_done ; error -> do not exit, let the user try this again
+
+        ; dx:ax contains the result
+        mov cx, dx
+        mov bx, ax 
+        ; cx:bx contains the result
+
+        .loop_check_esc:
+            mov ah, FUNC_KEY_ESC
+            int 0xb2 ; func key pressed?
+            cmp al, 1 ; 1 = key pressed
+            jnz .check_exit_done
+
+            ; check if key held down long enough
+            int 0x80 ; Get timer ticks (ax:dx)
+            cmp ax, cx 
+            jb .loop_check_esc ; loop over, if hi ticks not yet reached
+            cmp dx, bx
+            jb .loop_check_esc ; loop over, if lo ticks not yet reached
+
+            ; Time passed
+            ; restore stack -> equals exiting keyboard read interrupt
+            mov sp, [cs:.mlt_stack_offset]
+            ; deregister keyboard event to exit mlt
+            mov bx, [cs:.mlt_exit_event_hanlder_segment]
+            mov dx, [cs:.mlt_exit_event_hanlder_offset]
+            mov ah, 0x80 ; deregister event
+            int 0xb3
+            jmp .done
+        jmp .loop_check_esc
+
+        .check_exit_done:
+            retf
+
+    .read:
+        mov ax, 1 ; read at least one byte 
+
+        ; buffer contains bytes (if any)
+        cmp byte [cs:.mlt_buffer], 0
+        jz .skip_itoa
+            mov si, .mlt_buffer
+            int 0xe3 ; itoa => return in ax
+            jc .error
+        .skip_itoa:
+
+        ; display n bytes
+        mov cx, ax
+        push ds
+            push word [cs:.mlt_selected_segment]
+            pop ds
+            mov si, [cs:.mlt_selected_offset]
+
+            .read_loop:
+                push cx
+
+                    ; display 16 bytes per line
+                    mov ax, 16
+                    cmp cx, ax
+                    ja .read_ax_ok
+                        mov ax, cx; there are less than 16 bytes to display, only print the remaining ones
+                    .read_ax_ok:
+                    mov cx, ax
+                    push ax
+                        int 0x98 ; get screen position
+                        push bx
+                        push dx
+                            push si
+                            push cx
+                                .read_loop_line_binary:
+                                    mov dl, [ds:si]
+                                    inc si
+                                    int 0xe4 ; convert to printable hex
+
+                                    ; display bytes in binary
+                                    mov al, dh
+                                    int 0x90 
+                                    mov al, dl
+                                    int 0x90
+                                    ; Add a space
+                                    mov al, ASCII_SP
+                                    int 0x90
+                                loop .read_loop_line_binary
+                            pop cx
+                            pop si
+                        pop dx
+                        pop bx
+
+                        add bx, 64 ; offset for ascii character location
+                        int 0x99 ; set screen position
+
+                        .read_loop_line_ascii:
+                            mov al, [ds:si]
+                            inc si
+
+                            cmp al, ASCII_CR
+                            jz .read_loop_line_ascii_crlf
+                            cmp al, ASCII_LF
+                            jz .read_loop_line_ascii_crlf
+                            cmp al, ASCII_BS
+                            jz .read_loop_line_ascii_crlf
+
+                            int 0x90
+                            jmp .read_loop_line_ascii_done
+
+                            ; Do not print cr or lf -> structure will be damaged
+                            .read_loop_line_ascii_crlf:
+                                mov al, ASCII_SP
+                                int 0x90
+
+                        .read_loop_line_ascii_done: 
+                        loop .read_loop_line_ascii
+                    pop ax
+                pop cx
+                sub cx, ax ; number of bytes displayed
+                inc cx ; cx will be reduced by one by the following loop statement -> compensate this
+            loop .read_loop
+
+        .read_loop_finish:
+        pop ds
+
+        mov al, ASCII_LF
+        int 0x90
+
+        jmp .loop
+
+    .write:
+        ; buffer contains bytes (if any)
+        cmp byte [cs:.mlt_buffer], 0
+        jz .write_done
+
+        ; split string in buffer at space into split buffer
+        mov si, .mlt_buffer
+        mov di, .mlt_split_buffer
+        mov ah, 0b10 ; terminate second part
+        mov al, ASCII_SP
+        mov cx, MLT_BUFFER_SIZE
+        int 0xd4
+
+        ; convert string in buffer to numeric
+        int 0xe3
+        jc .error
+        cmp ah, 0
+        jnz .error ; do only write bytes, writing words is not supported!
+
+        ; write value (ax) to S:O 
+        push es
+            push word [cs:.mlt_selected_segment]
+            pop es
+            mov di, [cs:.mlt_selected_offset]
+
+            mov [es:di], al
+
+            inc di
+            mov [cs:.mlt_selected_offset], di
+        pop es
+
+        ; copy content of split buffer to buffer and jump to top
+        mov di, .mlt_buffer
+        mov al, 0
+        mov cx, MLT_BUFFER_SIZE
+        int 0xd1 ; initialize string
+
+        mov si, .mlt_split_buffer
+        mov di, .mlt_buffer
+        int 0xd0 ; get length
+
+        mov bx, 0
+        mov dx, ax
+        int 0xd3 ; copy split buffer into buffer
+
+        jmp .write
+
+        .write_done:
+            jmp .loop
+
+    .direct:
+        ; buffer contains bytes (if any)
+        cmp byte [cs:.mlt_buffer], 0
+        jz .direct_done
+
+        ; split string in buffer at space into split buffer
+        mov si, .mlt_buffer
+        mov di, .mlt_split_buffer
+        mov ah, 0b10 ; terminate second part
+        mov al, ASCII_SP
+        mov cx, MLT_BUFFER_SIZE
+        int 0xd4
+
+        push es
+            push word [cs:.mlt_selected_segment]
+            pop es
+            mov di, [cs:.mlt_selected_offset]
+
+            mov si, .mlt_buffer
+            mov cl, 1
+
+            .direct_loop:
+                mov al, [ds:si]
+                cmp al, 0
+                jz .direct_done
+
+                cmp al, ASCII_0
+                jl .direct_error
+
+                cmp al, ASCII_9
+                jg .direct_check_ascii_upper
+
+                ; ASCII - numeric
+                ; Subtract offset
+                sub al, ASCII_0
+                jmp .direct_next
+
+                .direct_check_ascii_upper:
+                cmp al, ASCII_A
+                jl .direct_error
+
+                cmp al, ASCII_F
+                jg .direct_check_ascii_lower
+
+                ; ASCII - upper
+                sub al, ASCII_A - 10
+                jmp .direct_next
+
+                .direct_check_ascii_lower:
+                cmp al, ASCII_A_LOWER
+                jl .direct_error
+
+                cmp al, ASCII_F_LOWER
+                jg .direct_error
+
+                ; ASCII - lesser
+                sub al, ASCII_A_LOWER - 10
+                jmp .direct_next
+
+                .direct_next:
+                    inc si
+
+                    cmp cl, 0
+                    jz .direct_next_write
+                        ; one more iteration to get full byte
+                        mov ah, al
+                        mov cl, 0
+                        jmp .direct_loop
+                    .direct_next_write:
+                        shl ah, 4
+                        or ah, al
+                        mov [es:di], ah
+                        mov cl, 1
+                        inc di
+                        jmp .direct_loop
+
+        .direct_error:
+            pop es
+            jmp .error
+
+        .direct_done:
+            pop es
+            jmp .loop
+
+    .run:
+        pusha
+        pushf
+        push ds
+        push es
+        mov ax, [cs:.mlt_selected_segment]
+        mov ds, ax
+        mov es, ax
+
+        ; return address, in case there is a retf instruction at the end of the procedure
+        push cs
+        push word .run_return
+
+        ; target location
+        push word [cs:.mlt_selected_segment]
+        push word [cs:.mlt_selected_offset]
+
+        sti ; enable interrupts for procedure
+
+        retf ; jump
+
+        .run_return:
+            pop es
+            pop ds
+            popf
+            popa
+            jmp .loop
+
+    .done:
+        pop ds
+        pop es
+        popf
+        popa
+        iret
 
     .mlt_buffer       times MLT_BUFFER_SIZE db 0
     .mlt_split_buffer times MLT_BUFFER_SIZE db 0
+
+    .mlt_stack_offset dw 0
+
+    .mlt_exit_event_hanlder_segment dw 0
+    .mlt_exit_event_hanlder_offset dw 0
+
+    .mlt_empty_dummy db 0x0a, 0x0d, 0
+
+    .mlt_selected_segment dw 0
+    .mlt_selected_offset dw 0
+    .mlt_selected_mode db 0
+
+    .MLT_MODE_READ      equ 1
+    .MLT_MODE_WRITE     equ 2
+    .MLT_MODE_DIRECT    equ 4
+    .MLT_MODE_RUN       equ 8
+    .mlt_mode_run_id db 'R', 0
+    .mlt_mode_write_id db 'W', 0
+    .mlt_mode_direct_id db 'P', 0
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
