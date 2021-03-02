@@ -421,6 +421,8 @@ keyboard_callback:
 keyboard_getch:
     sti ; Allow hardware interrupts to occur while processing software interrupts
 
+    mov byte [cs:.display_cursor], 0
+
     int 0x96
     cmp al, VIDEOMODE_ASCII_COLOR_80x25
     je .no_cursor
@@ -874,6 +876,39 @@ keyboard_ascii_to_scancode:
         pop si
         pop ds
         iret
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Clear keyboard buffer
+;
+; input: 
+;   none
+;
+; output:
+;   none
+;-------------------------------------------------------------------------------
+keyboard_clear_buffer:
+    cli ; Allow hardware interrupts to occur while processing software interrupts
+
+    pusha
+    push es
+        mov ax, cs
+        mov es, ax
+        mov di, keyboard_key_buffer
+
+        mov cx, KEYBOARD_KEY_BUFFER_LENGTH
+        xor ax, ax
+        cld
+
+        .clear_buffer:
+            stosb
+        loop .clear_buffer
+
+        mov byte [cs:keyboard_key_buffer_entries], 0
+    pop es
+    popa
+
+    iret
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------

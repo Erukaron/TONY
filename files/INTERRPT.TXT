@@ -186,19 +186,37 @@ TONY interrupts:
         none
 -------------------------------------------------
 0x98
-    Get current screen position
+    Get current screen position 
     input:
-        none
+        AH -> Flags
+            0: Get position
+            1: (GFX mode) get text cursor referenced to line and column number instead of pixel
     output:
         AL -> Video mode
         BX -> X-position
         DX -> Y-Position
 -------------------------------------------------
 0x99
-    Set current screen position
+    Set current screen position 
     input:
+        AH -> Flags
+            0: Get position
+            1: (GFX mode) set text cursor referenced to line and column number instead of pixel
         BX -> X-position
         DX -> Y-Position
+    output:
+        none
+-------------------------------------------------
+0x9a
+    Set color
+    input:
+        GFX mode: 
+            ah -> bg color
+            al -> fg color
+        Text mode:
+            al -> colorcode
+                high nibble is bg
+                low nibble if fg
     output:
         none
 -------------------------------------------------
@@ -257,6 +275,13 @@ TONY interrupts:
         al -> Scancode 
         (0x00 if ascii character not in current keymap)
         (only works for non extended scan codes!)
+-------------------------------------------------
+0xb5
+    Clear keyboard buffer
+    input:
+        none
+    output:
+        none
 -------------------------------------------------
 0xb8
     Allocate memory (in 16-byte units)
@@ -434,6 +459,16 @@ TONY interrupts:
     output:
         none
 -------------------------------------------------
+0xd7
+    Convert string case
+    input:
+        ah -> 0 to upper
+              1 to lower
+        ds:si -> string to convert
+        cx -> convert a maximum of cx characters
+    output:
+        none
+-------------------------------------------------
 
 -------------------------------------------------
 0xe0
@@ -499,6 +534,8 @@ TONY interrupts:
 -------------------------------------------------
 0xf2
     Call COM program
+    COM programs need to exit with a ret instruction
+    All registers are restored after the COM return
     input:
         DS:SI -> Filename of COM program
         ES:DI -> Command line arguments as string

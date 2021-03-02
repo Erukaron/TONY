@@ -117,6 +117,13 @@ kernel_setup:
     mov dx, oracle
     int 0xb3
 
+    mov ah, 0b110 ; Alt, Ctrl
+    mov al, SCAN_CODE_DELETE
+    ;mov al, SCAN_CODE_M ; -> debug
+    mov bx, cs
+    mov dx, mlt_call_via_keyboard_event
+    int 0xb3
+
     ; check if config should be read
     mov ah, FUNC_KEY_F7
     int 0xb2
@@ -260,7 +267,7 @@ kernel_setup:
 
         ; Wait 5 seconds befor starting the mlt
         mov ax, 5000
-        ;int 0x81
+        int 0x81
 
         jmp .after_shell
     .info_reading_shell_file db "Loading shell: ", 0
@@ -283,7 +290,7 @@ kernel_setup:
         push cs
         pop ds
         mov si, test_file
-        int 0xc2
+        ;int 0xc2
 
         ret
 
@@ -388,6 +395,10 @@ install_display:
     mov bx, display_set_screen_pos
     call kernel_install_interrupt
 
+    mov al, 0x9a
+    mov bx, display_set_color
+    call kernel_install_interrupt
+
     mov si, .wait_msg
     int 0x91
 
@@ -418,6 +429,10 @@ install_keyboard:
 
     mov al, 0xb4
     mov bx, keyboard_ascii_to_scancode
+    call kernel_install_interrupt
+
+    mov al, 0xb5
+    mov bx, keyboard_clear_buffer
     call kernel_install_interrupt
 
     call keyboard_init
@@ -506,6 +521,10 @@ install_string:
 
     mov al, 0xd6
     mov bx, str_terminate
+    call kernel_install_interrupt
+
+    mov al, 0xd7
+    mov bx, str_convert_case
     call kernel_install_interrupt
 
     ret
@@ -940,6 +959,8 @@ process_config_file:
         jz .error_parameter
 
         ; Write color code to display vars
+        ; Do explicitly NOT use the interrupt, because it requires the video mode to be updated -> May be adjusted by other settings in the config file
+        ;int 0x9a
         mov [cs:display_color], al
 
         ; Update info/warning/error/critical backgrounds
@@ -1032,6 +1053,8 @@ process_config_file:
         jz .error_parameter
 
         ; Write color code to display vars
+        ; Do explicitly NOT use the interrupt, because it requires the video mode to be updated -> May be adjusted by other settings in the config file
+        ; int 0x9a
         mov [cs:display_gfx_bg_color], ah
         mov [cs:display_gfx_fg_color], al
 

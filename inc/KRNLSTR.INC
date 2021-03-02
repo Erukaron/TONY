@@ -500,6 +500,67 @@ str_terminate:
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
+; Converts the case of a string
+;
+; input: 
+;   ah -> 0 to upper
+;         1 to lower
+;   ds:si -> string to convert
+;   cx -> convert a maximum of cx characters
+;
+; output:
+;   none
+;-------------------------------------------------------------------------------
+str_convert_case:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+    pusha
+
+    .loop:
+        mov al, [ds:si]
+        cmp al, 0
+        jz .done
+
+        cmp ah, 0
+        jnz .no_upper
+            call .to_upper
+        .no_upper:
+        cmp ah, 1
+        jnz .no_lower
+            call .to_lower
+        .no_lower:
+
+        mov [ds:si], al
+        inc si
+    loop .loop
+
+    .done:
+        popa
+        iret
+
+    .to_upper:
+        cmp al, ASCII_A_LOWER
+        jl .to_upper_done
+        cmp al, ASCII_Z_LOWER
+        jg .to_upper_done
+
+        sub al, ASCII_A_LOWER - ASCII_A
+
+        .to_upper_done:
+            ret
+
+    .to_lower:
+        cmp al, ASCII_A
+        jl .to_lower_done
+        cmp al, ASCII_Z
+        jg .to_lower_done
+
+        add al, ASCII_A_LOWER - ASCII_A
+
+        .to_lower_done:
+            ret
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
 ; Description
 ;
 ; input: 

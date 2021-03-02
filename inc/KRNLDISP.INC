@@ -201,7 +201,7 @@ display_switch_video_mode:
 display_get_video_mode:
     sti ; Allow hardware interrupts to occur while processing software interrupts
 
-    cmp byte [cs:display_video_mode], VIDEOMODE_ASCII_GRAY_40x25
+    cmp byte [cs:display_video_mode], VIDEOMODE_BIOS_ASCII_GRAY_40x25
     jnz .check_color_text
     mov al, VIDEOMODE_ASCII_GRAY_40x25
     jmp .done
@@ -375,7 +375,7 @@ display_putch:
     je .bs
 
     cmp al, ASCII_FIRST_PRINTABLE_CHAR
-    jnl .lo_ok
+    jae .lo_ok
         ; char not printable
         pop es
         popa
@@ -384,7 +384,7 @@ display_putch:
     .lo_ok:
 
     cmp al, ASCII_LAST_PRINTABLE_CHAR
-    jng .hi_ok
+    jbe .hi_ok
         ; char not printable
         pop es
         popa
@@ -557,21 +557,21 @@ display_gfx_putch:
     je .bs
 
     cmp al, ASCII_FIRST_PRINTABLE_CHAR
-    jnl .lo_ok
+    jae .lo_ok
         ; char not printable
         pop es
         popa
         mov al, ASCII_DOT
-        jmp display_putch
+        jmp display_gfx_putch
     .lo_ok:
 
     cmp al, ASCII_LAST_PRINTABLE_CHAR
-    jng .hi_ok
+    jbe .hi_ok
         ; char not printable
         pop es
         popa
         mov al, ASCII_DOT
-        jmp display_putch
+        jmp display_gfx_putch
     .hi_ok:
 
     mov bx, [cs:display_gfx_current_x]
@@ -592,7 +592,8 @@ display_gfx_putch:
     mov al, [cs:.character]
     cmp al, ASCII_LAST_PRINTABLE_CHAR ; if not printable, dont print
     ja .display_putch_done
-    sub al, ASCII_FIRST_PRINTABLE_CHAR ; subtract offset
+    ; offset removed with new font files supporting extended ascii chars
+    ;sub al, ASCII_FIRST_PRINTABLE_CHAR ; subtract offset
     shl ax, 1 ; multiply with 2
     mov si, display_font_array
     add si, ax
@@ -653,6 +654,11 @@ display_gfx_putch:
     pop bp
 
     add word [cs:display_gfx_current_x], DISPLAY_GFX_FONT_WIDTH
+
+    ; update cursor position
+    mov ax, [cs:display_gfx_current_x]
+    cmp ax, [cs:display_gfx_max_x]
+    ja .lf
 
     .display_putch_done:
         call display_update_cursor
@@ -1060,7 +1066,9 @@ display_prefix_print:
 ; Get current screen position
 ;
 ; input: 
-;   none
+;   AH -> Flags
+;       0: Get position
+;       1: (GFX mode) get text cursor referenced to line and column number instead of pixel
 ;
 ; output:
 ;   BX -> X-position
@@ -1069,7 +1077,7 @@ display_prefix_print:
 display_get_screen_pos:
     sti ; Allow hardware interrupts to occur while processing software interrupts
 
-    cmp byte [cs:display_video_mode], VIDEOMODE_GFX_320_200_COLOR
+    cmp byte [cs:display_video_mode], VIDEOMODE_BIOS_GFX_320_200_COLOR
     jz .gfx_mode
 
     ; text mode
@@ -1084,6 +1092,28 @@ display_get_screen_pos:
     mov bx, [cs:display_gfx_current_x]
     mov dl, [cs:display_gfx_current_y]
 
+    test ah, 1
+    jz .done
+
+    ; Calculate column and line number from pixel location
+    push ax
+    push cx
+        mov cl, DISPLAY_GFX_FONT_HEIGHT
+        mov ax, dx
+        xor dx, dx
+        div cl
+        mov dl, al
+
+        push dx
+            mov cx, DISPLAY_GFX_FONT_WIDTH
+            mov ax, bx
+            xor dx, dx
+            div cx
+            mov bx, ax
+        pop dx
+    pop cx
+    pop ax
+
     .done:
         iret
 ;-------------------------------------------------------------------------------
@@ -1092,6 +1122,9 @@ display_get_screen_pos:
 ; Set current screen position
 ;
 ; input: 
+;   AH -> Flags
+;       0: Get position
+;       1: (GFX mode) set text cursor referenced to line and column number instead of pixel
 ;   BX -> X-position
 ;   DX -> Y-position
 ;
@@ -1101,7 +1134,7 @@ display_get_screen_pos:
 display_set_screen_pos:
     sti ; Allow hardware interrupts to occur while processing software interrupts
 
-    cmp byte [cs:display_video_mode], VIDEOMODE_GFX_320_200_COLOR
+    cmp byte [cs:display_video_mode], VIDEOMODE_BIOS_GFX_320_200_COLOR
     jz .gfx_mode
 
     ; text mode
@@ -1110,11 +1143,69 @@ display_set_screen_pos:
     jmp .done
 
     .gfx_mode:
-    mov [cs:display_gfx_current_x], bx
-    mov [cs:display_gfx_current_y], dl
+    push bx
+    push dx
+        test ah, 1
+        jz .pixel
+
+        ; Calculate screen position from line and column number
+        push ax
+        push cx
+            mov cl, DISPLAY_GFX_FONT_HEIGHT
+            mov ax, dx
+            mul cl
+            mov dl, al
+
+            push dx
+                mov cx, DISPLAY_GFX_FONT_WIDTH
+                mov ax, bx
+                mul cx
+                mov bx, ax
+            pop dx
+        pop cx
+        pop ax
+
+        .pixel:
+        mov [cs:display_gfx_current_x], bx
+        mov [cs:display_gfx_current_y], dl
+    pop dx
+    pop bx
 
     .done:
         call display_update_cursor
+        iret
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Set color
+;
+; input: 
+;   GFX mode: 
+;       ah -> bg color
+;       al -> fg color
+;   Text mode:
+;       al -> colorcode
+;           high nibble is bg
+;           low nibble if fg
+;
+; output:
+;   none
+;-------------------------------------------------------------------------------
+display_set_color:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+
+    cmp byte [cs:display_video_mode], VIDEOMODE_BIOS_GFX_320_200_COLOR
+    jz .gfx_mode
+
+    ; text mode
+    mov [cs:display_color], al
+    jmp .done
+
+    .gfx_mode:
+    mov [cs:display_gfx_bg_color], ah
+    mov [cs:display_gfx_fg_color], al
+
+    .done:
         iret
 ;-------------------------------------------------------------------------------
 

@@ -57,7 +57,7 @@ Bei Fehlender Keyboard Datei halten
 [x] Jump to reset vector am Kernelende
 [x] MLT (Machine Monitor) vgl. Apple 2 -> lesen (Zahl eingeben) von N Byte (zahl1-zahl2), schreiben von N Byte (addr zahl: zahl1 zahl2...), ausführen an bestimmter Stelle (zahlR/zahlG)
     [x] Automatisch am Kernelende aufrufen
-    [x] Aufruf über Strg+Alt+Entf
+    [ ] Aufruf über Strg+Alt+Entf
     [x] Verlassen über ESC für 3 Sekunden gerdückt halten
         [x] Dauerschleife -> Check ob ESC gehalten, wenn nicht Schleife verlassen, nicht beenden, wenn ja -> 3 Sekunden Timer runter zählen und checken ob esc weiter gehalten
 [ ] Eventanmeldung für Timer
@@ -70,9 +70,18 @@ Bei Fehlender Keyboard Datei halten
 
 
 [ ] Fallout Hacking Login Game -> Über Shellparameter von Shell nachladbar
-    [ ] Animation -> Time based -> -auto
-    [ ] Animation -> Upon key stroke -> -keystroke
-    [ ] Animation -> Real text intput-> -match
+    [x] Animation -> Time based -> -auto
+    [x] Animation -> Upon key stroke -> -keystroke
+    [x] Animation -> Real text intput-> -match
+    [ ] Ton
+    [ ] Höhere Level
+    [ ] Auf Shell Übergabe reagieren
+[ ] Shell: Hat eine path variable -> in allen paths wird nach Programmen zur Ausführung gesucht
+    [ ] Begrenzter Befehlssatz: dir, cd, cls, color, exit, path, set path
+    [ ] Rest über Programme
+
+
+
 [ ] COSIC eigenes Programm
 
 [ ] Testfälle addieren:

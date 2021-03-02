@@ -33,6 +33,28 @@ MLT_BUFFER_SIZE     equ 80
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
+; MLT - start issued via keyboard event
+;
+; input: 
+;   none
+;
+; output:
+;   none
+;-------------------------------------------------------------------------------
+mlt_call_via_keyboard_event:
+    push ax
+        mov al, ASCII_LF
+        int 0x90 ; linbreak at start
+
+        int 0xf0 ; start mlt
+
+        mov al, ASCII_LF
+        int 0x90 ; linbreak at end
+    pop ax
+    retf
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
 ; Starts the machine language terminal 
 ;
 ; input: 
@@ -79,6 +101,7 @@ mlt_start:
         mov al, 0x00
         int 0xd1 ; initialize string
 
+        mov cx, MLT_BUFFER_SIZE
         mov di, .mlt_buffer
         int 0xb1 ; read line
 
@@ -267,7 +290,10 @@ mlt_start:
                     .read_ax_ok:
                     mov cx, ax
                     push ax
-                        int 0x98 ; get screen position
+                        push ax
+                            mov ah, 1
+                            int 0x98 ; get screen position
+                        pop ax
                         push bx
                         push dx
                             push si
@@ -292,7 +318,10 @@ mlt_start:
                         pop bx
 
                         add bx, 64 ; offset for ascii character location
-                        int 0x99 ; set screen position
+                        push ax
+                            mov ah, 1
+                            int 0x99 ; set screen position
+                        pop ax
 
                         .read_loop_line_ascii:
                             mov al, [ds:si]

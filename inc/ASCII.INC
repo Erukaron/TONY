@@ -132,5 +132,9 @@ ASCII_CURVED_BRACKET_OPEN  equ 0x7b
 ASCII_PIPE                 equ 0x7c
 ASCII_CURVED_BRACKET_CLOSE equ 0x7d
 ASCII_TILT                 equ 0x7e
-ASCII_LAST_PRINTABLE_CHAR  equ 0x7e
+
+; extended ascii
+ASCII_BLOCK                equ 0xdb
+ASCII_LAST_PRINTABLE_CHAR  equ 0xff
+;ASCII_LAST_PRINTABLE_CHAR  equ 0x7e
 ;-------------------------------------------------------------------------------

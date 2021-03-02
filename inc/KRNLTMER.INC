@@ -300,22 +300,67 @@ timer_create_random_number:
     sti
 
     push bx
+    push cx
+    push bp
     mov bx, ax
 
-    mov al, [cs:keyboard_key_buffer]
+    xor ax, cx
+    rcr ax, cl
+
+    xor al, [cs:keyboard_key_buffer]
     mov cl, [cs:keyboard_key_buffer_entries]
     inc cl
     mul cl ; randomizer, if user entered something
     mov cl, al
 
-    mov al, [cs:timer_tick_count_lo]
+    xor al, [cs:timer_tick_count_lo]
+    rcr ax, cl
 
     add cl, 251 ; add a prime number
     mul cl
 
+    xor ax, si
+    xor cl, al
+    rcr ax, cl
+    xor ax, di
+    xor cl, al
+    rcr ax, cl
+    xor ax, bp
+    xor cl, bl
+    rcr ax, cl
+    xor ax, sp
+    xor cl, bh
+    rcr ax, cl
+    xor ax, [ds:si]
+    xor cl, ah
+    rcr ax, cl
+    xor ax, [ds:di]
+    xor cl, al
+    rcr ax, cl
+    xor ax, [es:si]
+    xor cl, al
+    rcr ax, cl
+    xor ax, [es:di]
+    xor cl, al
+    rcr ax, cl
+    mov bp, sp
+    add bp, 10
+    xor ax, [ss:bp]
+    xor cl, al
+    rcr ax, cl
+
+    xor al, ah
+
     mov ah, bh
+
+    xor [cs:.timer_seed], al
+
+    pop bp
+    pop cx
     pop bx
     iret
+
+    .timer_seed db 0
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------

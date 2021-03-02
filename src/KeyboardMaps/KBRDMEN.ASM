@@ -143,7 +143,7 @@ table_start:
     ; fifth row                                                                                                 
     db                           0, SCAN_CODE_LEFT_CONTROL  , FUNC_KEY_IDENT_A      , FUNC_KEY_IDENT_B          , FUNC_KEY_CTRL 
     db                           0, SCAN_CODE_LEFT_ALT      , FUNC_KEY_IDENT_A      , FUNC_KEY_IDENT_B          , FUNC_KEY_ALT    
-    db                           0, SCAN_CODE_SPACE_BAR     , ASCII_SP              , ASCII_NUL                 , ASCII_NUL
+    db                           0, SCAN_CODE_SPACE_BAR     , ASCII_SP              , ASCII_SP                  , ASCII_SP
     db KEYBOARD_EXTENDED_SCAN_CODE, SCAN_CODE_RIGHT_ALT     , FUNC_KEY_IDENT_A      , FUNC_KEY_IDENT_B          , FUNC_KEY_ALT_GR 
     db KEYBOARD_EXTENDED_SCAN_CODE, SCAN_CODE_RIGHT_CONTROL , FUNC_KEY_IDENT_A      , FUNC_KEY_IDENT_B          , FUNC_KEY_CTRL_R 
 																											    
