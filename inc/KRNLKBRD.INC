@@ -141,6 +141,14 @@ keyboard_set_intial_keymap:
         mov si, .critical_keymap_does_not_exist
         int 0x97
 
+        ; Beep 5 times
+        xor ax, ax
+        int 0x88
+        int 0x88
+        int 0x88
+        int 0x88
+        int 0x88
+
     .hang_loop:
         cli
         hlt
@@ -290,7 +298,7 @@ keyboard_callback:
         cmp [cs:keyboard_keymap + bx], byte ASCII_NUL
         je .no_buffer_write ; Do not write if char is no ascii char
         cmp [cs:keyboard_key_buffer_entries], byte KEYBOARD_KEY_BUFFER_LENGTH
-        jge .no_buffer_write ; Do not write if buffer is full
+        jge .no_buffer_write_full ; Do not write if buffer is full
         mov dx, keyboard_key_buffer ; Get key buffer pointer
         add dl, [cs:keyboard_key_buffer_entries]
         mov al, [cs:keyboard_keymap + bx] ; write char to key buffer
@@ -299,6 +307,12 @@ keyboard_callback:
             mov [cs:bx], al
         pop bx
         inc byte [cs:keyboard_key_buffer_entries]
+        jmp .no_buffer_write ; acknowledge hw interrupt
+
+    .no_buffer_write_full:
+        ; Beep on full buffer
+        xor ax, ax
+        int 0x88
 
     .no_buffer_write:
         call kernel_acknowledge_hardware_interrupt

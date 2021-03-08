@@ -157,7 +157,9 @@ mlt_start:
         jc .no_run
             mov byte [cs:.mlt_selected_mode], .MLT_MODE_RUN
             mov dl, [cs:.mlt_mode_run_id]
-            int 0xd6 ; remove identification from string
+            mov dh, 0 ; remove identification from string
+            mov cx, 1 ; terminate on first occurence of string
+            int 0xd6 ; replace char
             jmp .no_read
         .no_run:
 
@@ -168,7 +170,9 @@ mlt_start:
         jc .no_write
             mov byte [cs:.mlt_selected_mode], .MLT_MODE_WRITE
             mov dl, [cs:.mlt_mode_write_id]
-            int 0xd6 ; remove identification from string
+            mov dh, 0 ; remove identification from string
+            mov cx, 1 ; terminate on first occurence of string
+            int 0xd6 ; replace char
             jmp .no_read
         .no_write:
 
@@ -179,7 +183,9 @@ mlt_start:
         jc .no_direct
             mov byte [cs:.mlt_selected_mode], .MLT_MODE_DIRECT
             mov dl, [cs:.mlt_mode_direct_id]
-            int 0xd6 ; remove identification from string
+            mov dh, 0 ; remove identification from string
+            mov cx, 1 ; terminate on first occurence of string
+            int 0xd6 ; replace char
             jmp .no_read
         .no_direct:
 

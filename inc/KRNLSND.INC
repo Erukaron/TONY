@@ -39,6 +39,77 @@
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
+; Output sound
+;
+; input: 
+;   ax -> Frequency (see COMMON.INC)
+;      -> = 0 for default beep (GIS2, 250ms)
+;
+; output:
+;   none
+;-------------------------------------------------------------------------------
+snd_output:
+    sti ; allow hardware interrupts
+
+    push ax
+    push bx
+        cmp ax, 0
+        jnz .skip_default
+            mov ax, NOTE_GIS2
+        .skip_default:
+        mov bx, ax
+
+        mov al, 182
+        cli
+        out 43h, al     ; tell speaker we're about to play a note
+        
+        in al, 61h
+        and al, 11111100b
+        out 61h, al     ; clearing lowest two bits cancels note
+
+        mov ax, bx
+        
+        out 42h, al     ; output low byte
+        mov al, ah
+        out 42h, al     ; output high byte
+        
+        in al, 61h
+        or al, 00000011b
+        out 61h, al     ; setting lowest two bits turns on note
+        sti
+    pop bx
+    pop ax
+
+    ; check for default beep
+    cmp ax, 0
+    jnz .done
+        ; sleep for default time and stop speaker
+        mov ax, 250
+        int 0x81
+        int 0x89
+
+    .done:
+        iret
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; stop sound output
+;
+; input: 
+;   none
+;
+; output:
+;   none
+;-------------------------------------------------------------------------------
+snd_stop_output:
+    in al, 61h
+    and al, 11111100b
+    out 61h, al     ; clearing lowest two bits cancels note
+    
+    iret
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
 ; Description
 ;
 ; input: 

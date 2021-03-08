@@ -66,16 +66,21 @@ Bei Fehlender Keyboard Datei halten
 [ ] Interrupt exceptions umprogrammieren -> Fehlermeldung geben / aktuelles Programm beenden
     Ab Interrupt exception 8 (auch hardware interrupt) im pic prüfen, ob hardware interrupt, falls nicht exception
 [ ] Ggf. stack memory senken
-[ ] Sound interrupts
+[x] Sound interrupts
+[ ] Music queue interrupt
+[x] Beep on full keyboard buffer
 
 
 [ ] Fallout Hacking Login Game -> Über Shellparameter von Shell nachladbar
     [x] Animation -> Time based -> -auto
     [x] Animation -> Upon key stroke -> -keystroke
     [x] Animation -> Real text intput-> -match
-    [ ] Ton
-    [ ] Höhere Level
-    [ ] Auf Shell Übergabe reagieren
+    [x] Ton
+    [x] Höhere Level
+    [x] Auf Shell Übergabe reagieren
+    [ ] Auf aktivierten Video Mode prüfen und entsprechend arbeiten
+    [x] fast mode
+    [x] variablen für display_fill funktion bereitstellen und dann nur eine funktion
 [ ] Shell: Hat eine path variable -> in allen paths wird nach Programmen zur Ausführung gesucht
     [ ] Begrenzter Befehlssatz: dir, cd, cls, color, exit, path, set path
     [ ] Rest über Programme

@@ -93,6 +93,28 @@ TONY interrupts:
 
 
 -------------------------------------------------
+0x88
+    Output sound
+    input:
+        ax -> Frequency (see COMMON.INC)
+           -> = 0 for default beep (GIS2, 250ms)
+    output:
+        none
+-------------------------------------------------
+0x89
+    Stop sound output
+    intput:
+        none
+    output:
+        none        
+-------------------------------------------------
+
+
+
+
+
+
+-------------------------------------------------
 0x8e
     Performs a 32-bit mathematical operation
     input: 
@@ -451,11 +473,12 @@ TONY interrupts:
         cx -> Number of white spaces removed
 -------------------------------------------------
 0xd6
-    Terminates the string at the first occurence of the character (overwriting 
-    the character)
+    Replace characters in a null terminated string
     input:
-        ds:si -> string to terminate
-        dl -> Character to terminate on
+        ds:si -> string to replace characters from
+        dl -> Characters to replace
+        dh -> Character to replace with
+        cx -> max number of characters to replace
     output:
         none
 -------------------------------------------------

@@ -114,6 +114,7 @@ str_contains:
 
     mov bx, di ; for restoring di
     mov dx, si ; for calculation of relative start address on match
+    mov cx, 0xffff ; start of es:di string inside ds:si string (relative position to start of string)
 
     .compare:
         cmp byte [ds:si], 0
@@ -167,6 +168,11 @@ str_contains:
             cmp al, ah
             jne .skip_si_restore_di
 
+            cmp cx, 0xffff
+            jnz .cx_correct
+                mov cx, si ; save position of start of es:di string in ds:si
+            .cx_correct:
+
             inc si
             inc di
 
@@ -179,6 +185,9 @@ str_contains:
 
         mov di, bx
         inc si
+
+        mov cx, 0xffff ; reset position
+
         jmp .compare
 
     .si_zero:
@@ -211,8 +220,8 @@ str_contains:
         mov di, sp
         and word [es:di + 2 + 14 + 6], 0xfffe ; 2 for push es 14 for pusha 6 for offset to flags from int call
 
-        mov ax, si
-        sub ax, dx ; get relative start address
+        sub cx, dx ; get relative start address
+        mov word [es:di + 2 + 14], cx ; 2 for push es 14 for pusha -> top is ax
 
     .done:
         pop es
@@ -468,33 +477,40 @@ str_remove_whitespace:
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
-; Terminates the string at the first occurence of the character (overwriting 
-; the character)
+; Replaces characters in a null terminated string
 ;
 ; input:
-;   ds:si -> string to terminate
-;   dl -> Character to terminate on
+;   ds:si -> string to replace characters from
+;   dl -> Characters to replace
+;   dh -> Character to replace with
+;   cx -> max number of characters to replace
 ;
 ; output:
 ;   none
 ;-------------------------------------------------------------------------------
-str_terminate:
+str_replace_char:
     sti ; enable hardware interrupts while processing string
 
     push si
+    push cx
 
     .loop:
         cmp byte [ds:si], 0
-        je .str_terminate_done
+        je .str_replace_done
+        cmp cx, 0
+        jz .str_replace_done
         cmp byte [ds:si], dl
-        je .terminate
+        je .replace
         inc si
         jmp .loop
 
-    .terminate:
-        mov byte [ds:si], 0
+    .replace:
+        mov byte [ds:si], dh
+        dec cx
+        jmp .loop
 
-    .str_terminate_done:
+    .str_replace_done:
+        pop cx
         pop si
         iret
 ;-------------------------------------------------------------------------------

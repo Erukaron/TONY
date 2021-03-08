@@ -97,6 +97,10 @@ kernel_setup:
     mov bx, _kernel_test_gfx
     call kernel_install_interrupt
 
+    ; Beep
+    xor ax, ax
+    int 0x88
+
     ; read default keyboard file
     mov si, keymap_file_initial
     call keyboard_set_intial_keymap
@@ -352,6 +356,14 @@ install_math:
     ret
 
 install_sound:
+    mov al, 0x88
+    mov bx, snd_output
+    call kernel_install_interrupt
+
+    mov al, 0x89
+    mov bx, snd_stop_output
+    call kernel_install_interrupt
+
     ret
 
 install_display:
@@ -520,7 +532,7 @@ install_string:
     call kernel_install_interrupt
 
     mov al, 0xd6
-    mov bx, str_terminate
+    mov bx, str_replace_char
     call kernel_install_interrupt
 
     mov al, 0xd7
@@ -1018,6 +1030,20 @@ process_config_file:
         mov bx, 0 ; Start from begin of string
         mov dx, ax ; Length of string
         int 0xd3 ; Copy substring to string
+
+        ; Replace comma with space
+        push ds
+        push si
+            push es
+            pop ds
+            mov si, di
+
+            mov cx, 0xffff ; replace any occurence
+            mov dl, ASCII_COMMA
+            mov dh, ASCII_SP
+            int 0xd6 ; replace char
+        pop si
+        pop ds
 
         jmp .loop
 

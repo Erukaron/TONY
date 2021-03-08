@@ -228,7 +228,9 @@ convert_unsigned_16bit_atoi:
         push cs
         pop es
         mov dl, [cs:.bin_trailing_marker]
-        int 0xd6 ; terminate string
+        mov dh, 0 ; terminate string
+        mov cx, 1 ; terminate first occurence
+        int 0xd6 
         mov bx, 0
         mov dx, 16
         mov di, .bin_value
@@ -281,7 +283,11 @@ convert_unsigned_16bit_atoi:
         push cs
         pop es
         mov dl, [cs:.hex_trailing_marker]
-        int 0xd6 ; terminate string
+        mov dh, 0 ; terminate string
+        push cx
+            mov cx, 1 ; terminate first occurence
+            int 0xd6 ; terminate string
+        pop cx
         mov bx, 0
         mov dx, 4
         mov di, .hex_value
