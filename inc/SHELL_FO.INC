@@ -50,41 +50,11 @@ FO_NO_OF_PWS                equ 20
 FO_PREFIX_CHARS             equ 1
 FO_SUFFIX_CHARS             equ 1
 FO_CHARS_PER_LINE           equ 22
-%ifndef _USE_TEXT_MODE
-    FO_LINES_PER_BLOCK      equ 28
-%else
-    FO_LINES_PER_BLOCK      equ 20
-%endif
 FO_NO_OF_BLOCKS             equ 2
-FO_MAX_CHAR_COUNT           equ FO_NO_OF_BLOCKS * FO_LINES_PER_BLOCK * FO_CHARS_PER_LINE
 FO_BLOCK_CHARS              equ FO_CHARS_PER_LINE + 6 + 1 + 2 ; 6 = hex number ; 1 = space between hex and pw ; 2 = space to next block
 
-FO_NO_OF_FILL_CHARS_LV_0    equ FO_MAX_CHAR_COUNT - (FO_SUFFIX_CHARS + FO_PREFIX_CHARS + FO_PW_LEN_LV_0) * FO_NO_OF_PWS
-FO_NO_OF_FILL_CHARS_LV_1    equ FO_MAX_CHAR_COUNT - (FO_SUFFIX_CHARS + FO_PREFIX_CHARS + FO_PW_LEN_LV_1) * FO_NO_OF_PWS
-FO_NO_OF_FILL_CHARS_LV_2    equ FO_MAX_CHAR_COUNT - (FO_SUFFIX_CHARS + FO_PREFIX_CHARS + FO_PW_LEN_LV_2) * FO_NO_OF_PWS
-FO_NO_OF_FILL_CHARS_LV_3    equ FO_MAX_CHAR_COUNT - (FO_SUFFIX_CHARS + FO_PREFIX_CHARS + FO_PW_LEN_LV_3) * FO_NO_OF_PWS
-FO_NO_OF_FILL_CHARS_LV_4    equ FO_MAX_CHAR_COUNT - (FO_SUFFIX_CHARS + FO_PREFIX_CHARS + FO_PW_LEN_LV_4) * FO_NO_OF_PWS
 fo_no_of_fill_chars_lv_current dw 0
 
-FO_AVERAGE_FILL_CHAR_NO_LV_0    equ FO_NO_OF_FILL_CHARS_LV_0 / FO_NO_OF_PWS
-FO_AVERAGE_FILL_CHAR_NO_LV_1    equ FO_NO_OF_FILL_CHARS_LV_1 / FO_NO_OF_PWS
-FO_AVERAGE_FILL_CHAR_NO_LV_2    equ FO_NO_OF_FILL_CHARS_LV_2 / FO_NO_OF_PWS
-FO_AVERAGE_FILL_CHAR_NO_LV_3    equ FO_NO_OF_FILL_CHARS_LV_3 / FO_NO_OF_PWS
-FO_AVERAGE_FILL_CHAR_NO_LV_4    equ FO_NO_OF_FILL_CHARS_LV_4 / FO_NO_OF_PWS
-
-%ifndef _USE_TEXT_MODE
-    FO_MAX_FILL_CHARS_LV_0  equ 0b1101111 ; 111
-    FO_MAX_FILL_CHARS_LV_1  equ 0b1011111 ; 95
-    FO_MAX_FILL_CHARS_LV_2  equ 0b1001111 ; 79
-    FO_MAX_FILL_CHARS_LV_3  equ 0b1000111 ; 71
-    FO_MAX_FILL_CHARS_LV_4  equ 0b0111111 ; 63
-%else
-    FO_MAX_FILL_CHARS_LV_0  equ 0b111111 ; 63
-    FO_MAX_FILL_CHARS_LV_1  equ 0b1111111 ; 127
-    FO_MAX_FILL_CHARS_LV_2  equ 0b1111111 ; 127
-    FO_MAX_FILL_CHARS_LV_3  equ 0b1111111 ; 127
-    FO_MAX_FILL_CHARS_LV_4  equ 0b1111111 ; 127
-%endif
 fo_max_fill_chars_lv_current db 0
 
 fo_fill_characters_left             dw 0
@@ -96,7 +66,9 @@ fo_hex_offset   dw 0x0000
 FO_OBFUSCATOR_CHARS_COUNT   equ 28
 fo_obfuscator_char_list db "^!§$%&/()=?*+#°-_.,:;|<>\}][{"
 
-fo_display_data times (FO_MAX_CHAR_COUNT + 1) db 0
+;                      |Maximum number of chars to display      |zero|
+;                      |with a max. line number of 28           |term|
+fo_display_data times ((FO_NO_OF_BLOCKS * FO_CHARS_PER_LINE * 28) + 1) db 0
 
 fo_pw_length        db FO_PW_LEN_LV_0, FO_PW_LEN_LV_1, FO_PW_LEN_LV_2, FO_PW_LEN_LV_3, FO_PW_LEN_LV_4
 fo_random_pw_id     db 0
@@ -355,31 +327,117 @@ FO_BLOCK1_X       equ 0
 FO_BLOCK1_Y       equ 5
 
 FO_USER_PROMPT_X  equ FO_BLOCK_CHARS * FO_NO_OF_BLOCKS
-FO_USER_PROMPT_Y  equ FO_LINES_PER_BLOCK + 4
 
 FO_LOCKDOWN1_X  equ 32
 FO_LOCKDOWN2_X  equ 24
-%ifndef _USE_TEXT_MODE
-    FO_LOCKDOWN1_Y  equ 13
-    FO_LOCKDOWN2_Y  equ 15
-%else
-    FO_LOCKDOWN1_Y  equ 11
-    FO_LOCKDOWN2_Y  equ 13
-%endif
+
+; Video mode dependend variables
+fo_lines_per_block      db 0
+fo_max_char_count       dw 0
+fo_no_of_fill_chars_lv_0    dw 0
+fo_no_of_fill_chars_lv_1    dw 0
+fo_no_of_fill_chars_lv_2    dw 0
+fo_no_of_fill_chars_lv_3    dw 0
+fo_no_of_fill_chars_lv_4    dw 0
+
+fo_user_prompt_y        db 0
+
+fo_max_fill_chars_lv_0  db 0
+fo_max_fill_chars_lv_1  db 0
+fo_max_fill_chars_lv_2  db 0
+fo_max_fill_chars_lv_3  db 0
+fo_max_fill_chars_lv_4  db 0
+
+fo_lockdown1_y          db 0
+fo_lockdown2_y          db 0
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
 ; Fallout login hacking game
 ;-------------------------------------------------------------------------------
 fallout_hacking_game:
-    %ifndef _USE_TEXT_MODE
+    int 0x96 ; get video mode into al
+    test al, VIDEO_MODE_GFX_320x200
+    jnz .use_gfx_mode
+        ; use text mode
+        xor cx, cx
+        mov cl, 20
+        mov byte [ds:fo_lines_per_block], cl
+
+        mov ax, FO_NO_OF_BLOCKS * FO_CHARS_PER_LINE
+        mul cx
+        mov word [ds:fo_max_char_count], ax
+        mov bx, ax
+
+        add cl, 4
+        mov byte [ds:fo_user_prompt_y], cl
+
+        sub ax, (FO_SUFFIX_CHARS + FO_PREFIX_CHARS + FO_PW_LEN_LV_0) * FO_NO_OF_PWS
+        mov word [ds:fo_no_of_fill_chars_lv_0], ax
+        mov ax, bx
+        sub ax, (FO_SUFFIX_CHARS + FO_PREFIX_CHARS + FO_PW_LEN_LV_1) * FO_NO_OF_PWS
+        mov word [ds:fo_no_of_fill_chars_lv_1], ax
+        mov ax, bx
+        sub ax, (FO_SUFFIX_CHARS + FO_PREFIX_CHARS + FO_PW_LEN_LV_2) * FO_NO_OF_PWS
+        mov word [ds:fo_no_of_fill_chars_lv_2], ax
+        mov ax, bx
+        sub ax, (FO_SUFFIX_CHARS + FO_PREFIX_CHARS + FO_PW_LEN_LV_3) * FO_NO_OF_PWS
+        mov word [ds:fo_no_of_fill_chars_lv_3], ax
+        mov ax, bx
+        sub ax, (FO_SUFFIX_CHARS + FO_PREFIX_CHARS + FO_PW_LEN_LV_4) * FO_NO_OF_PWS
+        mov word [ds:fo_no_of_fill_chars_lv_4], ax
+
+        mov byte [ds:fo_max_fill_chars_lv_0], 0b111111 ; 63
+        mov byte [ds:fo_max_fill_chars_lv_1], 0b101111 ; 
+        mov byte [ds:fo_max_fill_chars_lv_2], 0b100111 ; 
+        mov byte [ds:fo_max_fill_chars_lv_3], 0b100011 ; 
+        mov byte [ds:fo_max_fill_chars_lv_4], 0b011111 ; 
+
+        mov byte [ds:fo_lockdown1_y], 11
+        mov byte [ds:fo_lockdown2_y], 13
+
+        jmp .video_mode_vars_ok
+    .use_gfx_mode:
+        xor cx, cx
+        mov cl, 28
+        mov byte [ds:fo_lines_per_block], cl
+
+        mov ax, FO_NO_OF_BLOCKS * FO_CHARS_PER_LINE
+        mul cx
+        mov word [ds:fo_max_char_count], ax
+        mov bx, ax
+
+        add cl, 4
+        mov byte [ds:fo_user_prompt_y], cl
+
+        sub ax, (FO_SUFFIX_CHARS + FO_PREFIX_CHARS + FO_PW_LEN_LV_0) * FO_NO_OF_PWS
+        mov word [ds:fo_no_of_fill_chars_lv_0], ax
+        mov ax, bx
+        sub ax, (FO_SUFFIX_CHARS + FO_PREFIX_CHARS + FO_PW_LEN_LV_1) * FO_NO_OF_PWS
+        mov word [ds:fo_no_of_fill_chars_lv_1], ax
+        mov ax, bx
+        sub ax, (FO_SUFFIX_CHARS + FO_PREFIX_CHARS + FO_PW_LEN_LV_2) * FO_NO_OF_PWS
+        mov word [ds:fo_no_of_fill_chars_lv_2], ax
+        mov ax, bx
+        sub ax, (FO_SUFFIX_CHARS + FO_PREFIX_CHARS + FO_PW_LEN_LV_3) * FO_NO_OF_PWS
+        mov word [ds:fo_no_of_fill_chars_lv_3], ax
+        mov ax, bx
+        sub ax, (FO_SUFFIX_CHARS + FO_PREFIX_CHARS + FO_PW_LEN_LV_4) * FO_NO_OF_PWS
+        mov word [ds:fo_no_of_fill_chars_lv_4], ax
+
+        mov byte [ds:fo_max_fill_chars_lv_0], 0b1101111 ; 111
+        mov byte [ds:fo_max_fill_chars_lv_1], 0b1011111 ; 95
+        mov byte [ds:fo_max_fill_chars_lv_2], 0b1001111 ; 79
+        mov byte [ds:fo_max_fill_chars_lv_3], 0b1001011 ; 75
+        mov byte [ds:fo_max_fill_chars_lv_4], 0b1001000 ; 72
+
+        mov byte [ds:fo_lockdown1_y], 13
+        mov byte [ds:fo_lockdown2_y], 15
+
         mov ah, [cs:fo_bg_color]
         mov al, [cs:fo_fg_color]
         int 0x9a ; set color
-    %else
-        mov al, VIDEOMODE_ASCII_COLOR_80x25
-        int 0x93
-    %endif
+    .video_mode_vars_ok:
 
     int 0x95 ; clear screen
 
@@ -691,39 +749,49 @@ fo_game:
 
     cmp byte [ds:fo_pw_level], 4
     jnz .not_4
-        mov word [ds:fo_no_of_fill_chars_lv_current], FO_NO_OF_FILL_CHARS_LV_4
-        mov byte [ds:fo_max_fill_chars_lv_current], FO_MAX_FILL_CHARS_LV_4
+        mov ax, [ds:fo_no_of_fill_chars_lv_4]
+        mov word [ds:fo_no_of_fill_chars_lv_current], ax
+        mov al, [ds:fo_max_fill_chars_lv_4]
+        mov byte [ds:fo_max_fill_chars_lv_current], al
         mov word [ds:fo_pw_list_offset_current], fo_pw_list_4
         mov byte [ds:fo_pw_len_lv_current], FO_PW_LEN_LV_4
         jmp .display_var_filled
     .not_4:
     cmp byte [ds:fo_pw_level], 3
     jnz .not_3
-        mov word [ds:fo_no_of_fill_chars_lv_current], FO_NO_OF_FILL_CHARS_LV_3
-        mov byte [ds:fo_max_fill_chars_lv_current], FO_MAX_FILL_CHARS_LV_3
+        mov ax, [ds:fo_no_of_fill_chars_lv_3]
+        mov word [ds:fo_no_of_fill_chars_lv_current], ax
+        mov al, [ds:fo_max_fill_chars_lv_3]
+        mov byte [ds:fo_max_fill_chars_lv_current], al
         mov word [ds:fo_pw_list_offset_current], fo_pw_list_3
         mov byte [ds:fo_pw_len_lv_current], FO_PW_LEN_LV_3
         jmp .display_var_filled
     .not_3:
     cmp byte [ds:fo_pw_level], 2
     jnz .not_2
-        mov word [ds:fo_no_of_fill_chars_lv_current], FO_NO_OF_FILL_CHARS_LV_2
-        mov byte [ds:fo_max_fill_chars_lv_current], FO_MAX_FILL_CHARS_LV_2
+        mov ax, [ds:fo_no_of_fill_chars_lv_2]
+        mov word [ds:fo_no_of_fill_chars_lv_current], ax
+        mov al, [ds:fo_max_fill_chars_lv_2]
+        mov byte [ds:fo_max_fill_chars_lv_current], al
         mov word [ds:fo_pw_list_offset_current], fo_pw_list_2
         mov byte [ds:fo_pw_len_lv_current], FO_PW_LEN_LV_2
         jmp .display_var_filled
     .not_2:
     cmp byte [ds:fo_pw_level], 1
     jnz .not_1
-        mov word [ds:fo_no_of_fill_chars_lv_current], FO_NO_OF_FILL_CHARS_LV_1
-        mov byte [ds:fo_max_fill_chars_lv_current], FO_MAX_FILL_CHARS_LV_1
+        mov ax, [ds:fo_no_of_fill_chars_lv_1]
+        mov word [ds:fo_no_of_fill_chars_lv_current], ax
+        mov al, [ds:fo_max_fill_chars_lv_1]
+        mov byte [ds:fo_max_fill_chars_lv_current], al
         mov word [ds:fo_pw_list_offset_current], fo_pw_list_1
         mov byte [ds:fo_pw_len_lv_current], FO_PW_LEN_LV_1
         jmp .display_var_filled
     .not_1:
 
-        mov word [ds:fo_no_of_fill_chars_lv_current], FO_NO_OF_FILL_CHARS_LV_0
-        mov byte [ds:fo_max_fill_chars_lv_current], FO_MAX_FILL_CHARS_LV_0
+        mov ax, [ds:fo_no_of_fill_chars_lv_0]
+        mov word [ds:fo_no_of_fill_chars_lv_current], ax
+        mov al, [ds:fo_max_fill_chars_lv_0]
+        mov byte [ds:fo_max_fill_chars_lv_current], al
         mov word [ds:fo_pw_list_offset_current], fo_pw_list_0
         mov byte [ds:fo_pw_len_lv_current], FO_PW_LEN_LV_0
     .display_var_filled:
@@ -744,7 +812,8 @@ fo_game:
     int 0x99 ; set screen position to bx/dx
 
     ; Block 1
-    mov cx, FO_LINES_PER_BLOCK
+    xor cx, cx
+    mov cl, [ds:fo_lines_per_block]
     .block1_dsp:
         push cx
             mov cx, FO_CHARS_PER_LINE
@@ -772,7 +841,8 @@ fo_game:
     int 0x99 ; set screen position to bx/dx
 
     ; Block 2
-    mov cx, FO_LINES_PER_BLOCK
+    xor cx, cx
+    mov cl, [ds:fo_lines_per_block]
     .block2_dsp:
         push cx
             mov cx, FO_CHARS_PER_LINE
@@ -812,7 +882,8 @@ fo_game:
     ; User prompt
     mov bx, FO_USER_PROMPT_X
     mov [ds:.x_org], bx
-    mov dx, FO_USER_PROMPT_Y
+    xor dx, dx
+    mov dl, [ds:fo_user_prompt_y]
     mov [ds:.y_org], dx
     mov cx, FO_PW_TRIES
     .try_pw:
@@ -877,7 +948,9 @@ fo_game:
             sub cx, FO_PW_TRIES + 1
             not cx
             inc cx
-            mov dx, FO_USER_PROMPT_Y - 1 ; write newest password first
+            xor dx, dx
+            mov dl, [ds:fo_user_prompt_y]
+            dec dl ; write newest password first
 
             ; first index to address to read the entered password
             mov [ds:.pw_list_index], cl
@@ -999,7 +1072,8 @@ fo_game:
         push cx
             mov cx, FO_PW_LEN_MAX
             inc cx ; for ">"
-            mov dx, FO_USER_PROMPT_Y
+            xor dx, dx
+            mov dl, [ds:fo_user_prompt_y]
             mov bx, FO_USER_PROMPT_X
             mov ah, 1
             int 0x99 ; set screen position to bx/dx
@@ -1029,7 +1103,8 @@ fo_game:
     int 0x95 ; cls
 
     mov bx, FO_LOCKDOWN1_X
-    mov dx, FO_LOCKDOWN1_Y
+    xor dx, dx
+    mov dl, [ds:fo_lockdown1_y]
     mov ah, 1
     int 0x99 ; set cursors
 
@@ -1037,7 +1112,8 @@ fo_game:
     call fo_display_line_no_ln
 
     mov bx, FO_LOCKDOWN2_X
-    mov dx, FO_LOCKDOWN2_Y
+    xor dx, dx
+    mov dl, [ds:fo_lockdown2_y]
     mov ah, 1
     int 0x99 ; set cursors
 
@@ -1312,7 +1388,8 @@ fo_game:
 
     .login:
         mov bx, FO_USER_PROMPT_X
-        mov dx, FO_USER_PROMPT_Y
+        xor dx, dx
+        mov dl, [ds:fo_user_prompt_y]
         mov ah, 1
         int 0x99 ; set cursors
 

@@ -214,7 +214,6 @@ TONY interrupts:
             0: Get position
             1: (GFX mode) get text cursor referenced to line and column number instead of pixel
     output:
-        AL -> Video mode
         BX -> X-position
         DX -> Y-Position
 -------------------------------------------------
