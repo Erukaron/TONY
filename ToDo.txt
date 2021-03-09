@@ -69,6 +69,7 @@ Bei Fehlender Keyboard Datei halten
 [x] Sound interrupts
 [ ] Music queue interrupt
 [x] Beep on full keyboard buffer
+[ ] Integrate dir into shell
 
 
 [x] Fallout Hacking Login Game -> Über Shellparameter von Shell nachladbar
@@ -82,7 +83,7 @@ Bei Fehlender Keyboard Datei halten
     [x] fast mode
     [x] variablen für display_fill funktion bereitstellen und dann nur eine funktion
 [ ] Shell: Hat eine path variable -> in allen paths wird nach Programmen zur Ausführung gesucht
-    [ ] Begrenzter Befehlssatz: dir, cd, cls, color, exit, path, set path
+    [ ] Begrenzter Befehlssatz: dir, cd, cls, color, exit, path, set path, halt
     [ ] Rest über Programme
 
 

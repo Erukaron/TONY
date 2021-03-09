@@ -49,6 +49,7 @@ FAT_RD_ATTRIB_OFFSET        equ 0x0b
     FAT_RD_ATTRIB_SUB_DIR_OFFSET        equ 0x10
     FAT_RD_ATTRIB_ARCHIVE_OFFSET        equ 0x20
     FAT_RD_ATTRIB_DEVICE_OFFSET         equ 0x40
+    FAT_RD_ATTRIB_UNUSED                equ 0x80
 FAT_RD_CLUSTER_OFFSET       equ 0x1a
 FAT_RD_SIZE_OFFSET          equ 0x1c
 
@@ -206,6 +207,15 @@ fat_load:
         push cs
         pop ds
         mov si, fat_ident_buffer
+
+        push cx
+        push ax
+            ; convert string case
+            mov ah, 0 ; to upper
+            mov cx, 0xffff
+            int 0xd7
+        pop ax
+        pop cx
     pop bx ; segment to load file to 
     mov bp, di ; offset to load to
 
@@ -704,6 +714,15 @@ fat_get_file_size:
         mov si, fat_ident_buffer
     pop es
 
+    push cx
+    push ax
+        ; convert string case
+        mov ah, 0 ; to upper
+        mov cx, 0xffff
+        int 0xd7
+    pop ax
+    pop cx
+
     call fat_load_root_directory
     
     call fat_search_file
@@ -826,6 +845,14 @@ fat_open:
         push cs
         pop ds
         mov si, fat_ident_buffer
+        push cx
+        push ax
+            ; convert string case
+            mov ah, 0 ; to upper
+            mov cx, 0xffff
+            int 0xd7
+        pop ax
+        pop cx
         push word [cs:.handle_segment]
         pop es
         push word [cs:.handle_offset]

@@ -644,6 +644,9 @@ misc_start_com:
     pop di
     pop es
 
+    mov al, ASCII_LF
+    int 0x90 ; linebreak to start program in a new line
+
     ; Allocate memory for new list element
     push ax ; Save size reserved for file
         mov ax, 16
@@ -796,16 +799,22 @@ misc_start_com:
     retf       ; give control to com file
 
     .error_file_not_found:
+        pop es
+        pop ds
         popa
         or ax, 1
         iret
 
     .error_not_enough_ram:
+        pop es
+        pop ds
         popa
         or ax, 2
         iret
 
     .error_file_to_large:
+        pop es
+        pop ds
         popa
         or ax, 4
         iret
