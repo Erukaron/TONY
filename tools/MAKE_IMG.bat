@@ -40,6 +40,9 @@ mkdir output
 mkdir tmpfiles
 mkdir tmpfiles\txt
 mkdir tmpfiles\bin
+mkdir tmpfiles_sys_flag
+mkdir tmpfiles_sys_flag\txt
+mkdir tmpfiles_sys_flag\bin
 echo.
 
 echo Creating working copies
@@ -76,7 +79,7 @@ echo.
 
 :: Add every file to variable and pass var to rootdir creator with -i kernel as first entry
 echo Adding file to root directory: bin\KERNEL.SYS
-set rootDirArgs=-i "bin\KERNEL.SYS"
+set rootDirArgs=-isys "bin\KERNEL.SYS"
 for %%f in (bin\*.*) do (
 	if not "%%f" == "bin\BOOT.BIN" (
 	if not "%%f" == "bin\KERNEL.SYS" (
@@ -108,6 +111,16 @@ copy files\*.BIN tmpfiles\bin /Y
 copy files\*.COM tmpfiles\bin /Y
 echo.
 
+:: Copy system files (text)
+::copy files\SYS_FLAG\*.CFG tmpfiles_sys_flag\txt /Y
+::copy files\SYS_FLAG\*.TXT tmpfiles_sys_flag\txt /Y
+
+:: Copy system files (bin)
+::copy files\SYS_FLAG\*.MAP tmpfiles_sys_flag\bin /Y
+::copy files\SYS_FLAG\*.BIN tmpfiles_sys_flag\bin /Y
+copy files\SYS_FLAG\*.COM tmpfiles_sys_flag\bin /Y
+echo.
+
 :: Add txt files to root dir
 for %%f in (tmpfiles\txt\*.*) do (
 	echo Adding file to root directory: %%f
@@ -115,9 +128,21 @@ for %%f in (tmpfiles\txt\*.*) do (
 )
 echo.
 
+for %%f in (tmpfiles_sys_flag\txt\*.*) do (
+	echo Adding system file to root directory: %%f
+	set rootDirArgs=!rootDirArgs! -isys "%%f"
+)
+echo.
+
 :: Add files to image copy string
 for %%f in (tmpfiles\txt\*.*) do (
 	echo Adding file to image: bin\%%~nxf
+	set copyArgs=!copyArgs! + "bin\%%~nxf"
+)
+echo.
+
+for %%f in (tmpfiles_sys_flag\txt\*.*) do (
+	echo Adding system file to image: bin\%%~nxf
 	set copyArgs=!copyArgs! + "bin\%%~nxf"
 )
 echo.
@@ -129,9 +154,21 @@ for %%f in (tmpfiles\bin\*.*) do (
 )
 echo.
 
+for %%f in (tmpfiles_sys_flag\bin\*.*) do (
+	echo Adding system file to root directory: %%f
+	set rootDirArgs=!rootDirArgs! -isys "%%f"
+)
+echo.
+
 :: Add files to image copy string
 for %%f in (tmpfiles\bin\*.*) do (
 	echo Adding file to image: bin\%%~nxf
+	set copyArgs=!copyArgs! + "bin\%%~nxf"
+)
+echo.
+
+for %%f in (tmpfiles_sys_flag\bin\*.*) do (
+	echo Adding system file to image: bin\%%~nxf
 	set copyArgs=!copyArgs! + "bin\%%~nxf"
 )
 echo.
@@ -159,10 +196,18 @@ for %%f in (tmpfiles\txt\*.*) do (
 	echo Adjusting file size for static file: %%f
 	tools\FAT_RootDir_Creator.exe -fill next -fill-byte 32 -fill-last-byte 0 -i "%%f"
 )
+for %%f in (tmpfiles_sys_flag\txt\*.*) do (
+	echo Adjusting file size for static system file: %%f
+	tools\FAT_RootDir_Creator.exe -fill next -fill-byte 32 -fill-last-byte 0 -i "%%f"
+)
 
 :: Adjust filesize for binary files -> They need to be terminated at a multiple of 512 to be loaded correctly
 for %%f in (tmpfiles\bin\*.*) do (
 	echo Adjusting file size for static file: %%f
+	tools\FAT_RootDir_Creator.exe -fill next -fill-byte 0 -i "%%f"
+)
+for %%f in (tmpfiles_sys_flag\bin\*.*) do (
+	echo Adjusting file size for static system file: %%f
 	tools\FAT_RootDir_Creator.exe -fill next -fill-byte 0 -i "%%f"
 )
 echo.
@@ -170,14 +215,16 @@ echo.
 echo Moving adjusted static files to bin directory
 copy tmpfiles\txt\*.* bin
 copy tmpfiles\bin\*.* bin
+copy tmpfiles_sys_flag\txt\*.* bin
+copy tmpfiles_sys_flag\bin\*.* bin
 echo.
 
 echo Building image
 copy /b !copyArgs! "output\TONY.IMG"
 echo.
 
-:: Wait a little bit, so that the delete does not fail
-ping localhost -n 1 > nul
+:: Wait a little bit, so that the adjustment works
+::ping localhost -n 1 > nul
 
 if !fillImage!==true (
 	echo Adjusting file size of image
@@ -186,18 +233,20 @@ if !fillImage!==true (
 	echo.
 )
 
-:: Wait a little bit, so that the delete does not fail
-ping localhost -n 2 > nul
+echo Done
 
 if !tidy!==true (
+	:: Wait a little bit, so that the delete does not fail
+	ping localhost -n 3 > nul
+
 	echo Cleaning up
 	rd /S /Q build
 	rd /S /Q tmpfiles
+	rd /S /Q tmpfiles_sys_flag
 	rd /S /Q bin
 )
 
 cd %oldDir%
-echo Done
 
 goto eof
 

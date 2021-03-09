@@ -285,6 +285,7 @@ kernel_setup:
     ; set default video mode and start mlt
     call display_restore_default_kernel_video_mode
     int 0x95 ; cls
+
     int 0xf0 ; mlt
 
     cli
@@ -298,7 +299,7 @@ kernel_setup:
 
         ret
 
-    test_file db "TESTFILE.TST"
+    test_file db "TESTFILE.TST", 0
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
