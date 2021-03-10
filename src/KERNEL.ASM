@@ -262,7 +262,10 @@ kernel_setup:
             pop ds
         .after_shell_cmd:
 
+        mov byte [cs:fat_print_dot_on_disk_access], FALSE ; no feedback for disk operation for shell
         int 0xf2 ; call shell
+        mov byte [cs:fat_print_dot_on_disk_access], TRUE 
+        
         jmp .after_shell
     .no_shell:
         mov al, 2

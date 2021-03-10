@@ -83,7 +83,7 @@ Bei Fehlender Keyboard Datei halten
     [x] fast mode
     [x] variablen für display_fill funktion bereitstellen und dann nur eine funktion
 [ ] Shell: Hat eine path variable -> in allen paths wird nach Programmen zur Ausführung gesucht
-    [ ] Begrenzter Befehlssatz: dir, cd, cls, color, exit, path, set path, halt
+    [ ] Begrenzter Befehlssatz: dir, cd, cls, color, exit, path, set path, halt, type
     [ ] Rest über Programme
 
 

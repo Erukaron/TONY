@@ -55,7 +55,7 @@ snd_output:
     push bx
         cmp ax, 0
         jnz .skip_default
-            mov ax, NOTE_GIS2
+            mov ax, NOTE_A2
         .skip_default:
         mov bx, ax
 

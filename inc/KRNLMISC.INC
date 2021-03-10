@@ -644,9 +644,6 @@ misc_start_com:
     pop di
     pop es
 
-    mov al, ASCII_LF
-    int 0x90 ; linebreak to start program in a new line
-
     ; Allocate memory for new list element
     push ax ; Save size reserved for file
         mov ax, 16

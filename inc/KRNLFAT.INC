@@ -223,6 +223,13 @@ fat_load:
     mov ax, 0
     mov cx, 0xffff
     call fat_inc_load_file
+
+    ; if printing dots on disk access, print lf after loading finished, to start in a clean line
+    cmp [cs:fat_print_dot_on_disk_access], byte 0
+    jz .done_skip_lf
+        mov al, ASCII_LF
+        int 0x90 ; putch
+    .done_skip_lf:
     
     pop es
     pop ds
@@ -813,6 +820,11 @@ fat_get_file_size:
 fat_open:
     sti ; Allow hardware interrupts to occur while processing software interrupts
 
+    push ax
+    push cx
+    push dx
+    push di
+    push es
     push ds
     push si
 
@@ -1156,6 +1168,12 @@ fat_open:
     .done:
         pop si
         pop ds
+        pop es
+        pop di
+        pop dx
+        pop cx
+        pop ax
+
         iret
 
     .handle_segment dw 0

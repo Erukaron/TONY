@@ -56,7 +56,7 @@ DIR_SIZE_OFFSET             equ 19
 ;-------------------------------------------------------------------------------
 ; Vars
 ;-------------------------------------------------------------------------------
-welcome_msg             db "TONY shell program loaded.", ASCII_LF, ASCII_LF, 0
+welcome_msg             db ASCII_LF, "TONY shell program loaded.", ASCII_LF, ASCII_LF, 0
 current_directory       times 45 db 0
                         db 0
 ready_indicator         db ">", 0
@@ -65,6 +65,9 @@ input_buffer            times INPUT_BUFFER_LENGTH db 0
 split_buffer            times INPUT_BUFFER_LENGTH db 0
 
 cmd_file_not_found      db "Command or file not found!", ASCII_LF, 0
+file_not_found          db "File not found.", ASCII_LF, 0
+memory_error            db "Not enough memory!", ASCII_LF, 0
+unknown_error           db "Unknown error!", ASCII_LF, 0
 
 com_ident               db ".COM", 0
 
@@ -95,6 +98,7 @@ cmd_exit_ident           db "exit", 0
 cmd_path_ident           db "path", 0
 cmd_set_path_ident       db "set path", 0
 cmd_halt_ident           db "halt", 0
+cmd_type_ident           db "type", 0
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
@@ -305,6 +309,10 @@ try_exec_cmd:
     int 0xd2 ; check if string contains substring
     jnc halt
 
+    mov di, cmd_type_ident
+    int 0xd2 ; check if string contains substring
+    jnc type
+
     jmp .cmd_non_existant
 
     .cmd_return_point:
@@ -465,7 +473,7 @@ dir:
 
     .file_flags     db 0
     .volume_label   db 'Volume label: ', 0
-    .dir_label      db ' <DIR> ', 0
+    .dir_label      db '  <DIR> ', 0
     .size_str       times 8 db 0
                     db 0 ; zero termination for size str
 
@@ -563,7 +571,78 @@ set_path:
 halt:
     cli
     hlt
-    ret ; test if halt behaves like intended on real hardware
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Displays the content of the file given as argument in split_buffer
+; ASCII_NUL -> ASCII_SP
+; ASCII_BS  -> ASCII_SP
+; ASCII_CR  -> ASCII_SP
+;-------------------------------------------------------------------------------
+type:
+    pusha
+        mov si, split_buffer
+        int 0xc1 ; get file size
+        cmp ax, -1
+        jz .file_non_existant
+
+        mov cx, bx
+
+        int 0xc2 ; Open file handle (bp:bx)
+        cmp bp, -1 
+        jz .no_memory
+
+        .loop_display:
+            int 0xc4 ; Read byte from file via filehandle bp:bx into dl, dh is error code
+            cmp dh, 0
+            jnz .unknown_error
+
+            cmp dl, ASCII_NUL
+            jnz .not_nul
+                mov dl, ASCII_SP
+            .not_nul:
+
+            cmp dl, ASCII_BS
+            jnz .not_bs
+                mov dl, ASCII_SP
+            .not_bs:
+
+            cmp dl, ASCII_CR
+            jnz .not_cr
+                mov dl, ASCII_SP
+            .not_cr:
+
+            push ax
+                mov al, dl
+                int 0x90 ; putch
+            pop ax
+        loop .loop_display
+
+        int 0xc3 ; close file handle bp:bx
+
+        mov al, ASCII_LF
+        int 0x90
+
+        jmp .done
+
+    .file_non_existant:
+        mov al, 1 ; warn
+        mov si, file_not_found
+        int 0x97 ; print error
+        jmp .done
+    .no_memory:
+        mov al, 2 ; error
+        mov si, memory_error
+        int 0x97 ; print error
+        jmp .done
+    .unknown_error:
+        mov al, 2 ; error
+        mov si, unknown_error
+        int 0x97 ; print error
+        jmp .done
+    .done:
+    popa
+    ret
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
