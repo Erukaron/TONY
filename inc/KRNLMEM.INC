@@ -277,11 +277,19 @@ memory_allocate:
             mov cx, MEMORY_SMALLEST_UNIT
             div cx
 
-            ; cx contains MEMORY_SMALLEST_UNIT
-            ; dx contains rest 
-            ; intialization of whole memory chunk is required, not only of the requested
-            ; bytes -> calculate rest to fill memory chunk
-            sub cx, dx ; -> Rest to fill the chunk
+            ; check if divisible without remainder
+            cmp dx, 0
+            jnz .alter_cx
+                ; divisible without remainder, number of bytes to init equals requested bytes
+                xor cx, cx
+                jmp .cx_ok
+            .alter_cx:
+                ; cx contains MEMORY_SMALLEST_UNIT
+                ; dx contains rest 
+                ; intialization of whole memory chunk is required, not only of the requested
+                ; bytes -> calculate rest to fill memory chunk
+                sub cx, dx ; -> Rest to fill the chunk
+            .cx_ok:
             add cx, word [cs:.requested_bytes] ; Number of bytes to init
         pop dx
 
@@ -335,6 +343,9 @@ memory_free:
 
     test dx, 0b1111 ; If one of these bytes is set (lsb of offset is 1 - 15), the memory was not allocated by the memory manager and can thus not be freed
     jnz .done ; Do not free anything
+
+    cmp ax, 0
+    jz .done
 
     mov di, memory_master_map
 

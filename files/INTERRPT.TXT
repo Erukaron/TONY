@@ -399,6 +399,30 @@ TONY interrupts:
     output:
         none
 -------------------------------------------------
+0xc8
+    Directory exists
+    input:
+        ah -> 0
+        ds:si -> directory name
+    output:
+        al -> 1 directory does exist
+        dx -> start cluster of directory (-1 if non existant)
+-------------------------------------------------
+0xc9
+    Directory load
+    input:
+        ah -> 0
+        ds:si -> directory name
+    output:
+        none
+-------------------------------------------------
+0xca
+    Get current directory
+    input:
+        ah -> 0
+    output:
+        bx:bp -> offset to string
+-------------------------------------------------
 0xcf
     Feedback: disk operation
     input:
@@ -435,7 +459,7 @@ TONY interrupts:
         es:di -> Check string
     output:
         carry flag -> Set if ds:si string does not contain es:di string, otherwise clear
-        ax -> start of es:di string inside ds:si string (0 if not inside)
+        ax -> start of es:di string inside ds:si string 
 -------------------------------------------------
 0xd3
     Copies a substring into another string

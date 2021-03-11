@@ -61,7 +61,7 @@ FAT_FILE_HANDLE_OFFSET_OFFSET               equ 0x13
 FAT_FILE_HANDLE_OFFSET_FILE_SIZE_BYTES      equ 0x15
 FAT_FILE_HANDLE_OFFSET_FLAGS                equ 0x16
 
-FAT_ROOTDIR_OFFSET_START_CLUSTER    equ 0x1a
+MAX_ROOT_ENTRIES            equ 224
 
 %include "COMMON.INC"
 ;-------------------------------------------------------------------------------
@@ -70,12 +70,117 @@ FAT_ROOTDIR_OFFSET_START_CLUSTER    equ 0x1a
 ; Variable
 ;-------------------------------------------------------------------------------
 fat_ident_buffer times FAT_IDENT_LENGTH + 1 db 0 ; NNNNNNNNEEE0
-fat_data_start_sector dw 0 ; Start of data on disk -> Offset is boot sector and other reserved sectors
+
+fat_data_start_sector dw 0 ; Start of data on disk -> Offset is boot sector and other reserved sectors (including root dir and fat)
+fat_root_dir_start_sector dw 0 ; Start of root dir in disk -> Offset is boot sector and other reserved sectors (including fat)
+fat_load_data_offset dw 0 ; Used to load data from disk -> Set to either fat_data_start_sector or fat_root_dir_start_sector depending on the purpose
+
 fat_print_dot_on_disk_access db 1, 0 ; word, so it can be pushed to the stack
+
 fat_current_drive db 0
+fat_current_dir times FAT_IDENT_LENGTH db ASCII_SP ; NNNNNNNNNNN
+                                       db 0        ;            0
+
+; 0x00 (11 Bytes) Directory name in FAT format
+; 0x0b (2 Bytes)  Next entry segment
+; 0x0d (2 Bytes)  Next entry offset
+; 0x0f (1 Byte)   unused
+FAT_DIR_CHAIN_ENTRY_SIZE            equ 16
+FAT_DIR_CHAIN_NAME_OFFSET           equ 0
+FAT_DIR_CHAIN_NEXT_SEGMENT_OFFSET   equ 0x0b
+FAT_DIR_CHAIN_NEXT_OFFSET_OFFSET    equ 0x0d
+fat_dir_chain_segment dw 0
+fat_dir_chain_offset  dw 0
+
+fat_dir_current_ident   db ".", 0
+fat_dir_previous_ident  db "..", 0
+FAT_SUB_DIR_SEPARATOR               equ "\"
+
 NOT_IMPLEMENTED db "THIS FEATURE IS NOT YET IMPLEMENTED! BREAKPOINT IS GENERATED JUST BEFOR THIS CALL -> CHECK CALLER VIA STACK", 0
 
 %include "OEMPARAM.INC"
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Initializes the directory chain
+;
+; input:
+;   none
+;
+; output:
+;   none
+;-------------------------------------------------------------------------------
+fat_init:
+    pusha
+
+    mov ax, FAT_DIR_CHAIN_ENTRY_SIZE
+    int 0xb8 ; allocate memory
+
+    mov [cs:fat_dir_chain_segment], bx
+    mov [cs:fat_dir_chain_offset], dx
+
+    ; fill root entry
+    push ds
+    push es
+        push cs
+        pop ds
+        mov es, bx
+        mov si, fat_current_dir
+        mov di, dx
+        mov cx, FAT_IDENT_LENGTH
+        rep movsb
+    pop es
+    pop ds
+
+    popa
+    ret
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Loads the current/root directory table to ROOT_SEGMENT:ROOT_OFFSET
+;
+; input:
+;   fat_current_dir -> 0 or SPACE for root directory, else directory to load
+;
+; output:
+;   none
+;-------------------------------------------------------------------------------
+fat_load_directory:
+    cmp byte [cs:fat_current_dir], ASCII_NUL
+    jz fat_load_root_directory
+    cmp byte [cs:fat_current_dir], ASCII_SP
+    jz fat_load_root_directory
+    
+    pusha
+    push ds
+        xor ax, ax
+        push cs
+        pop ds
+        mov si, fat_current_dir
+        int 0xc8 ; check if dir exists -> start cluster in dx
+
+        ; dx is start cluster
+        call fat_load_file_allocation_table
+        xor ax, ax ; start cluster
+        mov cx, 0xffff ; read complete file
+        push ds
+        pop es ; es:si points to directory/file name
+        push word ROOT_SEGMENT
+        pop bx
+        mov bp, ROOT_OFFSET ; bx:bp points to destination
+
+        cmp dx, 0
+        jz .rootdir_request
+            ; default directory table request
+            call fat_inc_load_file
+            jmp .inc_load_done
+        .rootdir_request:
+            call fat_inc_load_root_dir
+        .inc_load_done:
+    pop ds
+    popa
+
+    ret
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
@@ -107,6 +212,7 @@ fat_load_root_directory:
         ; Calculate start of data sector
         mov word [cs:fat_data_start_sector], ax
         add word [cs:fat_data_start_sector], cx
+        mov word [cs:fat_root_dir_start_sector], ax
 
         ; Do not print '.' for rootdir or fat
         push word [cs:fat_print_dot_on_disk_access]
@@ -219,7 +325,7 @@ fat_load:
     pop bx ; segment to load file to 
     mov bp, di ; offset to load to
 
-    call fat_load_root_directory
+    call fat_load_directory
     mov ax, 0
     mov cx, 0xffff
     call fat_inc_load_file
@@ -356,7 +462,19 @@ fat_transform_filename_fat_format:
 ;   carry -> on error
 ;   cx -> Number of loaded sectors
 ;-------------------------------------------------------------------------------
+fat_inc_load_root_dir:
+    push ax
+        mov ax, [cs:fat_root_dir_start_sector]
+        mov [cs:fat_load_data_offset], ax
+    pop ax
+    jmp fat_inc_load_file_go
 fat_inc_load_file:
+    push ax
+        mov ax, [cs:fat_data_start_sector]
+        mov [cs:fat_load_data_offset], ax
+    pop ax
+    jmp fat_inc_load_file_go
+fat_inc_load_file_go:
     mov word [cs:.loaded_sectors], 0
 
     .find:
@@ -378,7 +496,7 @@ fat_inc_load_file:
     .load_file_stage1:
         pop ax ; Start cluster
         ; Calculate starting cluster ES:DI is set to First byte of entry in root dir
-        mov dx, word [es:di + FAT_ROOTDIR_OFFSET_START_CLUSTER] ; es:di points to start of root dir entry of the file (+26 for starting cluster)
+        mov dx, word [es:di + FAT_RD_CLUSTER_OFFSET] ; es:di points to start of root dir entry of the file (+26 for starting cluster)
         mov word [cs:.cluster], dx
 
         ; target location (bx:bp -> es:bx)
@@ -418,9 +536,11 @@ fat_inc_load_file:
         je .no_error ; max sector count 
 
         ; Read the file into memory
-        mov ax, word [cs:.cluster]
+        ; Input for int 0xe1 is dx...
+        ;mov ax, word [cs:.cluster]
+        mov dx, word [cs:.cluster]
         int 0xe1 ; convert cluster to lba
-        add dx, [cs:fat_data_start_sector] ; offset
+        add dx, [cs:fat_load_data_offset] ; offset
         mov ax, dx
         mov dl, [cs:fat_current_drive]
 
@@ -730,7 +850,7 @@ fat_get_file_size:
     pop ax
     pop cx
 
-    call fat_load_root_directory
+    call fat_load_directory
     
     call fat_search_file
     cmp ax, -1
@@ -1104,7 +1224,7 @@ fat_open:
             ; Get filename and store it again
             push es
             pusha
-                call fat_load_root_directory
+                call fat_load_directory
                 ;   ax -> Start sector 
                 ;   cx -> Sector count (0xffff to read the complete file)
                 ;   es:si -> Filename to load
@@ -1290,7 +1410,7 @@ fat_read_next_byte:
             push es
             push ds
             pusha
-                call fat_load_root_directory
+                call fat_load_directory
                 ;   ax -> Start sector 
                 ;   cx -> Sector count (0xffff to read the complete file)
                 ;   es:si -> Filename to load
@@ -1523,6 +1643,423 @@ fat_callback_disk_operation:
 
     .done:
         iret
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Directory exists
+;
+;   input:
+;       ah -> 0
+;       ds:si -> directory name
+;
+;   output:
+;       al -> 1 directory does exist
+;       dx -> start cluster of directory (-1 if non existant)
+;-------------------------------------------------------------------------------
+fat_directory_exists:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+    push ds
+    push si
+    push es
+    push di
+    push bx
+    push cx
+    push bp
+    push ax
+        cld
+
+        mov cx, FAT_IDENT_LENGTH
+        mov ah, 0 ; convert to upper
+        int 0xd7 ; convert string case ds:si
+
+        push word ROOT_SEGMENT
+        pop es
+        mov di, ROOT_OFFSET
+
+        ; search for directory
+        mov cx, MAX_ROOT_ENTRIES
+        .serach_directories:
+            mov bp, di ; entry start
+            mov bx, si
+
+            cmp byte [es:di], 0
+            jz .does_not_exist ; no more entries
+
+            mov al, FAT_RD_ATTRIB_SUB_DIR_OFFSET
+            test [es:di + FAT_RD_ATTRIB_OFFSET], al
+            jz .next_entry
+
+            ; String equality check in ds:si and es:di
+            push cx
+                mov cx, FAT_IDENT_LENGTH
+                repz cmpsb
+            pop cx
+            jz .does_exist ; equality for all bytes -> dir exists
+            cmp byte [es:di - 1], ASCII_SP ; ASCII_SP means the directory name is not the full 11 bytes long
+            jnz .next_entry ; if equality check fails and the directory name is not checked on each char, this means there is a difference
+            cmp byte [ds:si - 1], ASCII_NUL
+            jz .does_exist ; if however, the directory name is checked to the last char and the string in ds:si is also at its end, the names are equal
+
+            .next_entry:
+                mov di, bp
+                mov si, bx
+                add di, FAT_RD_ENTRY_LENGTH
+        loop .serach_directories
+        .directories_done:
+
+    .does_not_exist:
+        pop ax
+        mov al, 0
+        mov dx, -1
+        jmp .done
+    .does_exist:
+        pop ax
+        mov al, 1
+        mov di, bp
+        mov dx, [es:di + FAT_RD_CLUSTER_OFFSET] ; start cluster of the current entry
+        jmp .done
+    .done:
+        ; When adding pop's see .does_exist and .does_not_exist!
+        pop bp
+        pop cx
+        pop bx
+        pop di
+        pop es
+        pop si
+        pop ds
+        iret
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Directory load interrupt
+;
+;   input:
+;       ah -> 0
+;       ds:si -> directory name
+;
+;   output:
+;       none
+;-------------------------------------------------------------------------------
+fat_directory_load:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+    pusha
+    push ds
+    push es
+        mov byte [cs:.previous_requested], FALSE
+
+        push cs
+        pop es
+
+        mov ah, 0b01 ; string equals case sensitive
+        mov di, fat_dir_current_ident
+        int 0xd2 ; check if current dir is requested
+        jnc .done ; directory already ok -> do nothing
+
+        mov ah, 0b01 ; string equals case sensitive
+        mov di, fat_dir_previous_ident
+        int 0xd2 ; check if previous dir is requested
+        jc .load_dir
+            mov byte [cs:.previous_requested], TRUE
+        .load_dir:
+
+        mov di, fat_current_dir
+        mov al, ASCII_SP
+        mov cx, FAT_IDENT_LENGTH + 1
+        int 0xd1 ; initialize string es:di
+
+        int 0xd0 ; get string length ds:si
+
+        xor bx, bx
+        mov dx, ax ; length of string
+        int 0xd3 ; create copy of string
+        add di, dx
+        mov byte [es:di], ASCII_SP ; remove zero termination
+        sub di, dx
+
+        push ds
+            push es
+            pop ds
+            mov si, fat_current_dir
+            mov ah, 0
+            mov cx, FAT_IDENT_LENGTH
+            int 0xd7 ; String case to upper
+        pop ds
+
+        call fat_load_directory
+
+        cmp byte [cs:.previous_requested], TRUE
+        jz .previous
+            call .add_entry_to_chain
+        jmp .done
+
+    .previous:
+        call .remove_last_entry_from_chain
+        jmp .done
+
+    ; adds the directory in fat_current_dir to the directory chain
+    .add_entry_to_chain:
+        cld
+
+        push word [cs:fat_dir_chain_segment]
+        pop es
+        mov di, [cs:fat_dir_chain_offset]
+
+        push cs
+        pop ds
+        mov si, fat_current_dir
+
+        call .load_last_entry
+
+        ; Create and append new entry 
+        mov ax, FAT_DIR_CHAIN_ENTRY_SIZE
+        int 0xb8
+        mov [es:di + FAT_DIR_CHAIN_NEXT_SEGMENT_OFFSET], bx
+        mov [es:di + FAT_DIR_CHAIN_NEXT_OFFSET_OFFSET], dx
+
+        ; Load new entry
+        mov es, bx
+        mov di, dx 
+
+        ; Copy name to entry
+        mov cx, FAT_IDENT_LENGTH
+        rep movsb
+
+        ret
+
+    ; removes the last entry from the directory chain
+    .remove_last_entry_from_chain:
+        push word [cs:fat_dir_chain_segment]
+        pop es
+        mov di, [cs:fat_dir_chain_offset]
+
+        call .load_last_entry
+
+        ; check if current entry is last entry
+        cmp bx, 0
+        jnz .remove_last_entry
+        cmp dx, 0 
+        jnz .remove_last_entry
+
+        ; current is last -> do not remove
+        ret
+
+        .remove_last_entry:
+            ; deallocate the memory of the last element
+            push bx
+                mov ax, FAT_DIR_CHAIN_ENTRY_SIZE
+                mov bx, es
+                mov dx, di
+                int 0xb9
+            pop bx
+
+            ; unlink the last element from the chain
+            ; setting the seg/off of the last element in the second last element to zero
+            push es
+                mov es, bx
+                mov word [es:bp + FAT_DIR_CHAIN_NEXT_SEGMENT_OFFSET], 0
+                mov word [es:bp + FAT_DIR_CHAIN_NEXT_OFFSET_OFFSET], 0
+            pop es
+
+            ret
+
+    ; loads the last entry in the dir chain addressed by es:di
+    ; returns last entry in es:di 
+    ; returns second last entry in bx:bp (if any, bx:bp = 0 if only 1 entry)
+    .load_last_entry:
+        mov word [cs:.load_last_entry_previous_segment], 0
+        mov word [cs:.load_last_entry_previous_offset], 0
+
+        ; search last entry
+        .last_search:
+            mov bx, [es:di + FAT_DIR_CHAIN_NEXT_SEGMENT_OFFSET]
+            mov bp, [es:di + FAT_DIR_CHAIN_NEXT_OFFSET_OFFSET]
+            cmp bx, 0
+            jnz .load_next
+            cmp bp, 0
+            jnz .load_next
+
+            jmp .found_last
+
+            .load_next:
+                mov [cs:.load_last_entry_previous_segment], es
+                mov [cs:.load_last_entry_previous_offset], di
+                mov es, bx
+                mov di, bp
+                jmp .last_search
+        .found_last:
+            mov bx, [cs:.load_last_entry_previous_segment]
+            mov bp, [cs:.load_last_entry_previous_offset]
+            ret
+        .load_last_entry_previous_segment dw 0
+        .load_last_entry_previous_offset  dw 0
+
+    .done:
+        pop ds
+        pop es
+        popa
+        iret
+
+    .previous_requested db FALSE
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Get current directory
+;
+; input: 
+;   ah -> 0
+;
+; output:
+;   bx:bp -> offset to string
+;-------------------------------------------------------------------------------
+fat_get_current_dir:
+    sti ; Allow hardware interrupts to occur while processing software interrupts
+
+    push ds
+    push es
+    pusha
+        ; deallocate old string
+        mov bx, [cs:.current_dir_str_segment]
+        mov dx, [cs:.current_dir_str_offset]
+        mov ax, [cs:.current_dir_string_length]
+        int 0xb9
+
+        ; Get entry count 
+        push word [cs:fat_dir_chain_segment]
+        pop es
+        mov di, [cs:fat_dir_chain_offset]
+        call .count_entries_dir_chain
+
+        ; Calculate required string size
+        ; Each entry is 11 bytes (name) + 1 byte ("\") long
+        ; String needs to be zero terminated -> + 1
+        mov ax, FAT_IDENT_LENGTH + 1
+        mul cl
+        add ax, 1 ; zero termination
+        mov [cs:.current_dir_string_length], ax
+
+        ; Allocate string
+        int 0xb8
+        mov [cs:.current_dir_str_segment], bx
+        mov [cs:.current_dir_str_offset], dx
+
+        ; Load root of dir chain
+        push word [cs:fat_dir_chain_segment]
+        pop ds
+        mov si, [cs:fat_dir_chain_offset]
+
+        mov es, bx
+        mov di, dx
+
+        cld
+        .build_string:
+            call .entry_to_string
+            mov al, FAT_SUB_DIR_SEPARATOR
+            stosb
+
+            cmp word [ds:si + FAT_DIR_CHAIN_NEXT_SEGMENT_OFFSET], 0
+            jnz .next_entry
+            cmp word [ds:si + FAT_DIR_CHAIN_NEXT_OFFSET_OFFSET], 0
+            jnz .next_entry
+
+            ; seg and off are 0 -> last entry
+            jmp .string_built
+
+            .next_entry:
+                push word [ds:si + FAT_DIR_CHAIN_NEXT_SEGMENT_OFFSET]
+                push word [ds:si + FAT_DIR_CHAIN_NEXT_OFFSET_OFFSET]
+                pop si
+                pop ds
+                jmp .build_string
+
+        .string_built:
+
+        ; terminate string
+        mov byte [es:di], 0
+    popa
+    pop es
+    pop ds
+
+    mov bx, [cs:.current_dir_str_segment]
+    mov bp, [cs:.current_dir_str_offset]
+
+    iret
+
+    ; counts the entries in the directory chain loaded to es:di
+    ; returns count in cx
+    .count_entries_dir_chain:
+        ; search last entry
+        push bx
+        push bp
+        push es
+        push di
+        xor cx, cx
+        .count_search:
+            inc cx
+            mov bx, [es:di + FAT_DIR_CHAIN_NEXT_SEGMENT_OFFSET]
+            mov bp, [es:di + FAT_DIR_CHAIN_NEXT_OFFSET_OFFSET]
+            cmp bx, 0
+            jnz .count_next
+            cmp bp, 0
+            jnz .count_next
+
+            jmp .count_last
+
+            .count_next:
+                mov es, bx
+                mov di, bp
+                jmp .count_search
+        .count_last:
+            pop di
+            pop es
+            pop bp
+            pop bx
+            ret
+
+    ; Appends the directory name of the current entry (ds:si) to the string (es:di)
+    ; es and di are not preserved!
+    .entry_to_string:
+        push ds
+        push si
+            push bx
+            push dx
+            push es
+            push di
+                push cs
+                pop es
+                mov di, .current_dir_buffer
+                xor bx, bx
+                mov dx, FAT_IDENT_LENGTH
+                int 0xd3 ; copy string from entry in ds:si into buffer
+            pop di
+            pop es
+            pop dx
+            pop bx
+
+            ; replace spaces in buffer with 0
+            push cs
+            pop ds
+            mov si, .current_dir_buffer
+            mov dl, ASCII_SP
+            mov dh, ASCII_NUL
+            mov cx, FAT_IDENT_LENGTH
+            int 0xd6 ; replace spaces with nul
+
+            ; get length of string in buffer
+            int 0xd0 ; length in ax (terminator excluded)
+
+            ; write buffer to string (es:di)
+            cld
+            mov cx, ax
+            rep movsb
+        pop si
+        pop ds
+        ret
+
+    .current_dir_string_length  dw 0
+    .current_dir_str_segment    dw 0
+    .current_dir_str_offset     dw 0
+    .current_dir_buffer         times FAT_IDENT_LENGTH  db ASCII_SP
+                                                        db 0
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------

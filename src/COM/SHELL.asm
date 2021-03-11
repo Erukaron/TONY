@@ -57,8 +57,6 @@ DIR_SIZE_OFFSET             equ 19
 ; Vars
 ;-------------------------------------------------------------------------------
 welcome_msg             db ASCII_LF, "TONY shell program loaded.", ASCII_LF, ASCII_LF, 0
-current_directory       times 45 db 0
-                        db 0
 ready_indicator         db ">", 0
 
 input_buffer            times INPUT_BUFFER_LENGTH db 0
@@ -185,8 +183,15 @@ MAIN:
 
 ;-------------------------------------------------------------------------------
 shell_loop:
-    mov si, current_directory
-    int 0x91
+    push ds
+        int 0xca ; get current directory string into bx:bp
+
+        push bx
+        pop ds
+        mov si, bp
+        int 0x91
+    pop ds
+    
     mov si, ready_indicator
     int 0x91
 
@@ -369,13 +374,14 @@ dir:
             int 0x90 ; linebreak
         .volume_label_done:
 
-
         ; Display any subdirectory (if any)
         mov si, ROOT_OFFSET
         mov cx, MAX_ROOT_ENTRIES
         .serach_directories:
             cmp byte [ds:si], 0
             jz .directories_done ; no more entries
+
+            mov bp, si
 
             mov al, FAT_RD_ATTRIB_SUB_DIR_OFFSET
             or al, [ds:.file_flags]
@@ -404,6 +410,7 @@ dir:
             int 0x90 ; linebreak
 
             .next_directory:
+                mov si, bp
                 add si, FAT_RD_ENTRY_LENGTH
         loop .serach_directories
         .directories_done:
@@ -526,9 +533,27 @@ dir:
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
+; Changes to the directory identified by split_buffer
 ;-------------------------------------------------------------------------------
 cd:
-    ret
+    mov ah, 0
+    mov si, split_buffer
+    int 0xc8 ; check if directory exists
+    test al, 1
+    jz .dir_exist_error
+
+    int 0xc9
+
+    jmp .done
+
+    .dir_exist_error:
+        mov al, 2 ; error
+        mov si, .dir_does_not_exist
+        int 0x97 ; prefix print
+    .done:
+        ret
+
+    .dir_does_not_exist db "Directory does not exist!", ASCII_LF, 0
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------

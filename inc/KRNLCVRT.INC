@@ -97,7 +97,10 @@ convert_cluster_lba:
     push cx
     push ax
 
-    sub dx, 2 ; Cluster number needs to be zero based
+    cmp dx, 0 ; dx is zero, if load of root directory is requested
+    jz .no_sub
+        sub dx, 2 ; Cluster number needs to be zero based
+    .no_sub:
     xor cx, cx
     mov cl, byte [cs:bpbSectorsPerCluster] 
     mov ax, dx

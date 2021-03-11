@@ -97,6 +97,8 @@ kernel_setup:
     mov bx, _kernel_test_gfx
     call kernel_install_interrupt
 
+    call fat_init
+
     ; Beep
     xor ax, ax
     int 0x88
@@ -119,6 +121,12 @@ kernel_setup:
     mov al, SCAN_CODE_F12
     mov bx, cs
     mov dx, oracle
+    int 0xb3
+
+    mov ah, 0
+    mov al, SCAN_CODE_F11
+    mov bx, cs
+    mov dx, change_sys_drive_test
     int 0xb3
 
     mov ah, 0b110 ; Alt, Ctrl
@@ -265,7 +273,7 @@ kernel_setup:
         mov byte [cs:fat_print_dot_on_disk_access], FALSE ; no feedback for disk operation for shell
         int 0xf2 ; call shell
         mov byte [cs:fat_print_dot_on_disk_access], TRUE 
-        
+
         jmp .after_shell
     .no_shell:
         mov al, 2
@@ -499,6 +507,18 @@ install_fat:
 
     mov al, 0xc7
     mov bx, fat_write_next_bytes
+    call kernel_install_interrupt
+
+    mov al, 0xc8
+    mov bx, fat_directory_exists
+    call kernel_install_interrupt
+
+    mov al, 0xc9
+    mov bx, fat_directory_load
+    call kernel_install_interrupt
+
+    mov al, 0xca
+    mov bx, fat_get_current_dir
     call kernel_install_interrupt
 
     mov al, 0xcf
@@ -1195,6 +1215,15 @@ oracle:
     .yes_str db "YES", 0x0a, 0x0d, 0
     .no_str db "NO", 0x0a, 0x0d, 0
 ;-------------------------------------------------------------------------------
+
+change_sys_drive_test:
+    xchg bx, bx
+    mov byte [cs:fat_current_drive], 80h
+    mov byte [cs:bsDriveNumber], 80h
+    call fat_load_root_directory
+    mov al, ASCII_1
+    int 0x90
+    retf
 
 
 ;-------------------------------------------------------------------------------
