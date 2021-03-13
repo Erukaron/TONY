@@ -373,7 +373,7 @@ TONY interrupts:
         es:di -> Address to write the bytes to (zero terminated)
         ah -> function
             0: read string to zero termination
-            1: read string to line break
+            1: read string to line break (linebreak is excluded in resulting string)
         cx -> Max string length
     output:
         es:di -> Zero terminated string

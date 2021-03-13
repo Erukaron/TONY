@@ -103,6 +103,7 @@ echo.
 echo Create working copies of static files
 copy files\*.CFG tmpfiles\txt /Y
 copy files\*.TXT tmpfiles\txt /Y
+copy files\*.BAT tmpfiles\txt /Y
 copy README.MD tmpfiles\txt /Y
 
 :: Copy binary files
@@ -114,6 +115,7 @@ echo.
 :: Copy system files (text)
 ::copy files\SYS_FLAG\*.CFG tmpfiles_sys_flag\txt /Y
 ::copy files\SYS_FLAG\*.TXT tmpfiles_sys_flag\txt /Y
+::copy files\SYS_FLAG\*.BAT tmpfiles_sys_flag\txt /Y
 
 :: Copy system files (bin)
 ::copy files\SYS_FLAG\*.MAP tmpfiles_sys_flag\bin /Y

@@ -59,17 +59,23 @@ DIR_SIZE_OFFSET             equ 19
 welcome_msg             db ASCII_LF, "TONY shell program loaded.", ASCII_LF, ASCII_LF, 0
 ready_indicator         db ">", 0
 
-input_buffer            times INPUT_BUFFER_LENGTH db 0
-split_buffer            times INPUT_BUFFER_LENGTH db 0
+input_buffer            times INPUT_BUFFER_LENGTH   db 0
+                                                    db 0 ; null terminator
+split_buffer            times INPUT_BUFFER_LENGTH   db 0
+                                                    db 0 ; null terminator
 
 cmd_file_not_found      db "Command or file not found!", ASCII_LF, 0
 file_not_found          db "File not found.", ASCII_LF, 0
 memory_error            db "Not enough memory!", ASCII_LF, 0
 unknown_error           db "Unknown error!", ASCII_LF, 0
 
+autoexec_ident          db "AUTOEXEC.BAT", 0
+
 com_ident               db ".COM", 0
+bat_ident               db ".BAT", 0
 
 run                     db TRUE
+echo_on                 db TRUE
 
 enable_hacking_game_ident db "-fallout_style"
 enable_hacking_game       db FALSE
@@ -97,6 +103,9 @@ cmd_path_ident           db "path", 0
 cmd_set_path_ident       db "set path", 0
 cmd_halt_ident           db "halt", 0
 cmd_type_ident           db "type", 0
+cmd_echo_ident           db "echo", 0
+cmd_pause_ident          db "pause", 0
+cmd_delay_ident          db "delay", 0
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
@@ -178,22 +187,30 @@ MAIN:
     mov si, welcome_msg
     int 0x91 ; print
 
+    mov si, autoexec_ident
+    call process_batch
+
     jmp shell_loop
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
+; Shell input loop
+;-------------------------------------------------------------------------------
 shell_loop:
-    push ds
-        int 0xca ; get current directory string into bx:bp
+    cmp byte [cs:echo_on], FALSE
+    jz .skip_display_path
+        push ds
+            int 0xca ; get current directory string into bx:bp
 
-        push bx
+            push bx
+            pop ds
+            mov si, bp
+            int 0x91
         pop ds
-        mov si, bp
+        
+        mov si, ready_indicator
         int 0x91
-    pop ds
-    
-    mov si, ready_indicator
-    int 0x91
+    .skip_display_path:
 
     mov al, 0
     mov cx, INPUT_BUFFER_LENGTH
@@ -206,17 +223,7 @@ shell_loop:
     cmp byte [es:di], 0
     jz shell_loop
 
-    mov si, input_buffer
-    mov di, split_buffer
-    mov ah, 0b10 ; terminate first and second string
-    mov al, ASCII_SP
-    mov cx, INPUT_BUFFER_LENGTH
-    int 0xd4 ; split string
-
-    call try_exec_file
-    jnc .check_run
-
-    call try_exec_cmd
+    call process_input
     jnc .check_run
 
     mov al, 2 ; error prefix
@@ -231,6 +238,128 @@ shell_loop:
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
+; Process the batch file in si
+; Sets carry on error
+;-------------------------------------------------------------------------------
+process_batch:
+    pusha
+        ; Check if file contains ".BAT"
+        mov di, bat_ident
+        mov ah, 0b10 ; contains substring, ignore case
+        int 0xd2
+        jc .error
+
+        ; Check if file exists
+        int 0xc1
+        cmp ax, 0xffff
+        jz .error
+
+        ; Open filehandle
+        int 0xc2
+        cmp bp, 0xffff
+        jz .error
+
+        ; Save file handle
+        push bp
+        push bx
+            call loop_execute_batch
+        pop bx
+        pop bp
+
+        ; Close filehandle
+        int 0xc3
+
+        clc
+        jmp .done
+    .error:
+        stc
+    .done:
+        popa
+        ret
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Executes the batch file with its handle at bp:bx line by line
+;-------------------------------------------------------------------------------
+loop_execute_batch:
+    cmp byte [cs:echo_on], FALSE
+    jz .skip_display_path
+        push bp
+        push bx
+            push ds
+                int 0xca ; get current directory string into bx:bp
+
+                push bx
+                pop ds
+                mov si, bp
+                int 0x91
+            pop ds
+            
+            mov si, ready_indicator
+            int 0x91
+        pop bx
+        pop bp
+    .skip_display_path:
+
+    ; Read string to es:di
+    mov di, input_buffer
+    mov ah, 1 ; line break terminated
+    mov cx, INPUT_BUFFER_LENGTH
+    int 0xc5
+    mov [cs:.eof], dh
+
+    cmp byte [cs:echo_on], FALSE
+    jz .skip_display_command
+        mov si, input_buffer
+        int 0x91 ; print
+
+        mov al, ASCII_LF
+        int 0x90 ; putch
+    .skip_display_command:
+
+    call process_input ; process the command/file
+
+    .next_line:
+        cmp byte [cs:.eof], 1
+        jz .done
+        jmp loop_execute_batch ; loop
+
+    .done:
+        ret
+
+    .eof db 0
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Process the command/file in input_buffer
+; Returns carry flag, if file/command not found
+;-------------------------------------------------------------------------------
+process_input:
+    pusha
+        mov si, input_buffer
+        mov di, split_buffer
+        mov ah, 0b10 ; terminate first and second string
+        mov al, ASCII_SP
+        mov cx, INPUT_BUFFER_LENGTH
+        int 0xd4 ; split string
+
+        call try_exec_file
+        jnc .return_no_carry
+
+        call try_exec_cmd
+        jnc .return_no_carry
+
+    .return_carry:
+        popa
+        stc
+        ret
+    .return_no_carry:
+        popa
+        clc
+        ret
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
 ; Searches for a executable file with its name in input_buffer
 ; Executes it, if it exists, giving it arguments in split_buffer
 ; input:
@@ -242,20 +371,36 @@ shell_loop:
 ;       -> clear, if file executed
 ;-------------------------------------------------------------------------------
 try_exec_file:
-    ; check if file is executable
+    ; check if file is executable (com)
     mov si, input_buffer
     mov ah, 0b10 ; contains substring, ignore case
     mov di, com_ident
     int 0xd2 ; check if string contains substring
-    jc .file_non_existant
+    jnc .com
 
-    ; si is set to input buffer
-    mov di, split_buffer
-    int 0xf2 ; call com program
-    cmp ax, 0x01 ; file not found error
-    jz .file_non_existant
-    clc
-    jmp .done
+    ; Check batch
+    mov si, input_buffer
+    mov ah, 0b10 ; contains substring, ignore case
+    mov di, bat_ident
+    int 0xd2 ; check if string contains substring
+    jnc .bat
+
+    jmp .file_non_existant
+
+    .com:
+        ; si is set to input buffer
+        mov di, split_buffer
+        int 0xf2 ; call com program
+        cmp ax, 0x01 ; file not found error
+        jz .file_non_existant
+        clc
+        jmp .done
+
+    .bat: 
+        mov si, input_buffer
+        call process_batch
+        clc 
+        jmp .done
 
     .file_non_existant:
         stc
@@ -317,6 +462,18 @@ try_exec_cmd:
     mov di, cmd_type_ident
     int 0xd2 ; check if string contains substring
     jnc type
+
+    mov di, cmd_echo_ident
+    int 0xd2 ; check if string contains substring
+    jnc echo
+
+    mov di, cmd_pause_ident
+    int 0xd2 ; check if string contains substring
+    jnc pause
+
+    mov di, cmd_delay_ident
+    int 0xd2 ; check if string contains substring
+    jnc delay
 
     jmp .cmd_non_existant
 
@@ -424,8 +581,12 @@ dir:
 
             mov bp, si
 
+            ; Check file flags
             mov al, [cs:.file_flags]
-            cmp [ds:si + FAT_RD_ATTRIB_OFFSET], al
+            mov ah, [ds:si + FAT_RD_ATTRIB_OFFSET]
+            ; zero the archive bit
+            and ah, FAT_RD_ATTRIB_UNUSED + FAT_RD_ATTRIB_DEVICE_OFFSET + FAT_RD_ATTRIB_SUB_DIR_OFFSET + FAT_RD_ATTRIB_VOLUME_LBL_OFFSET + FAT_RD_ATTRIB_SYSTEM_OFFSET + FAT_RD_ATTRIB_HIDDEN_OFFSET + FAT_RD_ATTRIB_READ_ONLY_OFFSET
+            cmp ah, al
             jnz .next_file
 
             ; display filename
@@ -668,6 +829,48 @@ type:
     .done:
     popa
     ret
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Prints the string in split buffer and a line break
+;-------------------------------------------------------------------------------
+echo:
+    mov si, split_buffer
+    int 0x91 ; print string
+
+    mov al, ASCII_LF
+    int 0x90 ; putch
+
+    ret
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Halts program execution until a key is pressed 
+;-------------------------------------------------------------------------------
+pause:
+    mov ah, 0xff ; do not display char on screen
+    int 0xb0 ; getch
+    ret
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Halts program execution for the word sized milliseconds in split buffer
+;-------------------------------------------------------------------------------
+delay:
+    mov si, split_buffer
+    int 0xe3 ; convert 16 bit string representation of int to int in ax
+    jc .error_nan
+
+    int 0x81 ; Sleep millis
+    ret
+
+    .error_nan:
+        mov si, .nan_msg
+        mov al, 2
+        int 0x97 ; prefix print
+        ret
+
+    .nan_msg db "Not a number!", ASCII_LF, 0
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------

@@ -1476,7 +1476,7 @@ fat_read_next_byte:
 ;   es:di -> Address to write the bytes to (zero terminated)
 ;   ah -> Function
 ;       0: read string to zero termination
-;       1: read string to line break
+;       1: read string to line break (crlf not included!)
 ;   cx -> Max string length
 ;
 ; output:
@@ -1522,20 +1522,29 @@ fat_read_next_string:
 
     .check_zero:
         cmp [es:di - 1], byte 0
-        jz .done
+        jz .check_zero_found
         loop .build_str
-    jmp .done
+
+        .check_zero_found:
+            dec di ; di is terminated with zero in .done -> "overwrite" existing zero termination, do not terminate two times
+            jmp .done
 
     .check_crlf:
         cmp di, 2 ; there need to be at least 2 bytes
         jb .build_str
 
         cmp [es:di - 2], word ASCII_CRLF
-        jz .done
+        jz .check_crlf_found
         cmp [es:di - 2], word ASCII_LFCR
-        jz .done
+        jz .check_crlf_found
         loop .build_str
-    jmp .done
+
+        .check_crlf_found:
+            dec di 
+            mov byte [es:di], 0 ; terminate first CR/LF
+            dec di ; di is terminated with zero in .done -> "overwrite" existing zero termination, do not terminate two times
+                   ; This will terminate the second LF/CR
+            jmp .done
 
     .done:
         ; Zero termination
