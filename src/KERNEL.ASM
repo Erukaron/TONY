@@ -101,7 +101,7 @@ kernel_setup:
 
     ; Beep
     xor ax, ax
-    int 0x88
+    ;int 0x88
 
     ; read default keyboard file
     mov si, keymap_file_initial

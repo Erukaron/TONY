@@ -1423,7 +1423,10 @@ fo_putch:
         and al, 0b1111 ; maximum of 15 ms
         add al, 2 ; wait at least 2 ms
         ; => ax contains random number between 2 and 17
+        shr al, 1
+        mov [cs:.delay], al
 
+        ; Do only play sound for one half of the delay -> Otherwise the sound will be played continiously, because after one putch, the next putch will occur directly after the first one ended, thus enabling the speaker again
         push ax
             mov al, [cs:fo_use_sound]
             cmp al, TRUE
@@ -1433,16 +1436,22 @@ fo_putch:
             .skip_sound:
         pop ax
 
-        int 0x81 ; sleep ax milli seconds
+        int 0x81 ; sleep ax milli seconds (first half)
+
+        int 0x89 ; Stop sound sound
     pop ax
 
     int 0x90 ; display character
 
     push ax
-        int 0x89
+        xor ax, ax
+        mov al, [cs:.delay]
+        int 0x81 ; sleep ax milli seconds (second half)
     pop ax
 
     ret
+
+    .delay db 0
 
 ; reads keyboard intput for cx bytes and stores it to es:di
 ; does not invoke a linebreak

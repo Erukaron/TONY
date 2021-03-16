@@ -69,7 +69,7 @@ Bei Fehlender Keyboard Datei halten
 [x] Sound interrupts
 [ ] Music queue interrupt
 [x] Beep on full keyboard buffer
-[ ] Integrate dir into shell
+[x] Integrate dir into shell
 
 
 [x] Fallout Hacking Login Game -> Über Shellparameter von Shell nachladbar

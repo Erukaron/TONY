@@ -68,11 +68,15 @@ cmd_file_not_found      db "Command or file not found!", ASCII_LF, 0
 file_not_found          db "File not found.", ASCII_LF, 0
 memory_error            db "Not enough memory!", ASCII_LF, 0
 unknown_error           db "Unknown error!", ASCII_LF, 0
+nan_error               db "Not a number!", ASCII_LF, 0
 
 autoexec_ident          db "AUTOEXEC.BAT", 0
 
 com_ident               db ".COM", 0
 bat_ident               db ".BAT", 0
+
+on_ident                db "ON", 0
+off_ident               db "OFF", 0
 
 run                     db TRUE
 echo_on                 db TRUE
@@ -97,15 +101,17 @@ fo_fast_mode             db FALSE
 cmd_dir_ident            db "dir", 0
 cmd_cd_ident             db "cd", 0
 cmd_cls_ident            db "cls", 0
-cmd_color_ident          db "color", 0
 cmd_exit_ident           db "exit", 0
-cmd_path_ident           db "path", 0
-cmd_set_path_ident       db "set path", 0
 cmd_halt_ident           db "halt", 0
 cmd_type_ident           db "type", 0
 cmd_echo_ident           db "echo", 0
 cmd_pause_ident          db "pause", 0
 cmd_delay_ident          db "delay", 0
+cmd_at_echo_ident        db "@echo", 0
+
+cmd_color_ident          db "color", 0
+cmd_path_ident           db "path", 0
+cmd_set_path_ident       db "set path", 0
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
@@ -475,6 +481,10 @@ try_exec_cmd:
     int 0xd2 ; check if string contains substring
     jnc delay
 
+    mov di, cmd_at_echo_ident
+    int 0xd2 ; check if string contains substring
+    jnc at_echo
+
     jmp .cmd_non_existant
 
     .cmd_return_point:
@@ -726,9 +736,25 @@ cls:
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
+; Takes a 16 bit integer from split_buffer and applies it as new display color
 ;-------------------------------------------------------------------------------
 color:
+    mov si, split_buffer
+    int 0xe3 ; convert si to 16-bit int into ax
+    jc .help
+
+    ; ax already filled
+    int 0x9a ; set color from ax
+
     ret
+
+    .help:
+        mov si, .help_msg
+        mov al, 0 ; info
+        int 0x97 ; prefix print
+        ret
+
+    .help_msg db "The color command accepts either a byte (in text mode) or a word (in gfx mode) and sets the screen foreground color to the low nibble/byte and the background color to the high nibble/byte.", ASCII_LF, 0
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
@@ -865,12 +891,38 @@ delay:
     ret
 
     .error_nan:
-        mov si, .nan_msg
+        mov si, nan_error
         mov al, 2
         int 0x97 ; prefix print
         ret
+;-------------------------------------------------------------------------------
 
-    .nan_msg db "Not a number!", ASCII_LF, 0
+;-------------------------------------------------------------------------------
+; Enables feedback while processing a batch file / showing the path
+; Checks split_buffer for "on"/"off"
+;-------------------------------------------------------------------------------
+at_echo:
+    mov si, split_buffer
+    mov ah, 0b11 ; equals, ignore case
+
+    mov di, on_ident
+    int 0xd2 ; Check if strings equal
+    jnc .turn_on
+
+    mov di, off_ident
+    int 0xd2 ; Check if strings equal
+    jnc .turn_off
+
+    ; else -> do nothing
+    ret
+
+    .turn_on:
+        mov byte [cs:echo_on], TRUE
+        ret
+
+    .turn_off:
+        mov byte [cs:echo_on], FALSE
+        ret
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
