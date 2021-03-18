@@ -113,13 +113,13 @@ copy files\*.COM tmpfiles\bin /Y
 echo.
 
 :: Copy system files (text)
-::copy files\SYS_FLAG\*.CFG tmpfiles_sys_flag\txt /Y
+copy files\SYS_FLAG\*.CFG tmpfiles_sys_flag\txt /Y
 ::copy files\SYS_FLAG\*.TXT tmpfiles_sys_flag\txt /Y
 ::copy files\SYS_FLAG\*.BAT tmpfiles_sys_flag\txt /Y
 
 :: Copy system files (bin)
-::copy files\SYS_FLAG\*.MAP tmpfiles_sys_flag\bin /Y
-::copy files\SYS_FLAG\*.BIN tmpfiles_sys_flag\bin /Y
+copy files\SYS_FLAG\*.MAP tmpfiles_sys_flag\bin /Y
+copy files\SYS_FLAG\*.BIN tmpfiles_sys_flag\bin /Y
 copy files\SYS_FLAG\*.COM tmpfiles_sys_flag\bin /Y
 echo.
 
