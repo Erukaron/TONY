@@ -237,7 +237,7 @@ TONY interrupts:
         Text mode:
             al -> colorcode
                 high nibble is bg
-                low nibble if fg
+                low nibble is fg
     output:
         none
 -------------------------------------------------
@@ -322,6 +322,11 @@ TONY interrupts:
     output:
         none
 -------------------------------------------------
+
+
+
+
+
 
 -------------------------------------------------
 0xc0
@@ -431,6 +436,11 @@ TONY interrupts:
         none
 -------------------------------------------------
 
+
+
+
+
+
 -------------------------------------------------
 0xd0
     Get string length -> Number of chars to next terminator (terminator is not included in length)
@@ -516,6 +526,11 @@ TONY interrupts:
         none
 -------------------------------------------------
 
+
+
+
+
+
 -------------------------------------------------
 0xe0
     Converts a string to upper/lower case
@@ -557,6 +572,11 @@ TONY interrupts:
     output:
         DX -> resulting printable ascii integer
 -------------------------------------------------
+
+
+
+
+
 
 -------------------------------------------------
 0xf0

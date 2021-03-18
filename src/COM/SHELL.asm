@@ -48,6 +48,9 @@ FAT_RD_ATTRIB_OFFSET        equ 0x0b
 FAT_RD_CLUSTER_OFFSET       equ 0x1a
 FAT_RD_SIZE_OFFSET          equ 0x1c
 
+FAT_FILENAME_LENGTH         equ 8
+FAT_EXTENSION_LENGTH        equ 3
+
 MAX_ROOT_ENTRIES            equ 224
 
 DIR_SIZE_OFFSET             equ 19
@@ -377,21 +380,47 @@ process_input:
 ;       -> clear, if file executed
 ;-------------------------------------------------------------------------------
 try_exec_file:
-    ; check if file is executable (com)
+    ; check if filelength matches the maximum
     mov si, input_buffer
+    int 0xd0 ; get string length
+    cmp ax, FAT_FILENAME_LENGTH + 1 + FAT_EXTENSION_LENGTH + 1 ; NNNNNNNN.EEE0
+    ja .file_non_existant ; filename is too long -> file can not exist
+
+    ; Create a copy of the input_buffer
+    mov bx, 0 ; start address
+    mov dx, ax ; end address
+    mov di, .prog_ident
+    int 0xd3
+
+    ; check if file is executable (com)
+    mov si, .prog_ident
     mov ah, 0b10 ; contains substring, ignore case
     mov di, com_ident
     int 0xd2 ; check if string contains substring
     jnc .com
 
     ; Check batch
-    mov si, input_buffer
+    mov si, .prog_ident
     mov ah, 0b10 ; contains substring, ignore case
     mov di, bat_ident
     int 0xd2 ; check if string contains substring
     jnc .bat
 
-    jmp .file_non_existant
+    ; Imply .com as file suffix
+    int 0xd0 ; get string length
+    cmp ax, FAT_FILENAME_LENGTH
+    ja .file_non_existant ; filename is too long -> file can not exist
+
+    ; Add ".com" to the end of the .prog_ident
+    mov si, com_ident
+    mov di, .prog_ident
+    add di, ax
+    xor bx, bx
+    mov dx, 1 + FAT_EXTENSION_LENGTH ; .COM
+    int 0xd3 ; Copy ds:si into es:di from offset bx with a maximum of dx
+
+    mov si, .prog_ident
+    ; Proceed with the .com handler
 
     .com:
         ; si is set to input buffer
@@ -403,8 +432,9 @@ try_exec_file:
         jmp .done
 
     .bat: 
-        mov si, input_buffer
+        mov si, .prog_ident
         call process_batch
+        jc .file_non_existant
         clc 
         jmp .done
 
@@ -412,6 +442,8 @@ try_exec_file:
         stc
     .done:
         ret
+
+    .prog_ident times FAT_FILENAME_LENGTH + 1 + FAT_EXTENSION_LENGTH + 1 db 0 ; NNNNNNNN.EEE0
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
