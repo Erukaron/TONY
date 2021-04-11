@@ -337,6 +337,8 @@ fat_load:
         int 0x90 ; putch
     .done_skip_lf:
     
+    call fat_disable_motor
+
     pop es
     pop ds
     popa
@@ -903,6 +905,8 @@ fat_get_file_size:
     ;pop es
 
     .done:
+        call fat_disable_motor
+
         pop es
         pop ds
         popa
@@ -1286,6 +1290,8 @@ fat_open:
             jmp .hang_write_error
 
     .done:
+        call fat_disable_motor
+
         pop si
         pop ds
         pop es
@@ -1458,6 +1464,8 @@ fat_read_next_byte:
             jmp .done
 
         .done:
+            call fat_disable_motor
+
             pop ds
             pop si
             pop cx
@@ -1551,6 +1559,8 @@ fat_read_next_string:
         mov al, 0
         stosb 
 
+        call fat_disable_motor
+
         pop ax
         pop di
 
@@ -1591,6 +1601,7 @@ fat_write_next_byte:
     ; 6) Write file information from file handle to root directory (size)
 
     sti ; Allow hardware interrupts to occur while processing software interrupts
+    call fat_disable_motor
 
     xchg bx, bx
     push cs
@@ -1618,6 +1629,7 @@ fat_write_next_byte:
 ;-------------------------------------------------------------------------------
 fat_write_next_bytes:
     sti ; Allow hardware interrupts to occur while processing software interrupts
+    call fat_disable_motor
 
     xchg bx, bx
     push cs
@@ -1733,6 +1745,8 @@ fat_directory_exists:
         jmp .done
     .done:
         ; When adding pop's see .does_exist and .does_not_exist!
+        call fat_disable_motor
+
         pop bp
         pop cx
         pop bx
@@ -1907,6 +1921,8 @@ fat_directory_load:
         .load_last_entry_previous_offset  dw 0
 
     .done:
+        call fat_disable_motor
+
         pop ds
         pop es
         popa
@@ -2073,6 +2089,28 @@ fat_get_current_dir:
     .current_dir_str_offset     dw 0
     .current_dir_buffer         times FAT_IDENT_LENGTH  db ASCII_SP
                                                         db 0
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Disables the floppy motor
+;
+; input: 
+;   none
+;
+; output:
+;   none
+;-------------------------------------------------------------------------------
+fat_disable_motor:
+    push ax
+    push dx
+        mov dx, 0x3f2 ; digital output register (dor)
+        in al, dx ; get bitflag definitions (https://wiki.osdev.org/Floppy_Disk_Controller#Registers)
+        ; Bit no. 4 contains motor status of drive 0 (1 = on, 0 = off)
+        and al, 0b11101111 ; disable motor of drive 0
+        out dx, al
+    pop dx
+    pop ax
+    ret
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
