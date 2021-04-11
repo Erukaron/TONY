@@ -59,7 +59,7 @@ DIR_SIZE_OFFSET             equ 19
 ;-------------------------------------------------------------------------------
 ; Vars
 ;-------------------------------------------------------------------------------
-welcome_msg             db ASCII_LF, "TONY shell program loaded.", ASCII_LF, ASCII_LF, 0
+welcome_msg             db "TONY shell program loaded.", ASCII_LF, ASCII_LF, 0
 ready_indicator         db ">", 0
 
 input_buffer            times INPUT_BUFFER_LENGTH   db 0
@@ -121,6 +121,8 @@ cmd_set_path_ident       db "set path", 0
 ; Program entry point
 ;-------------------------------------------------------------------------------
 MAIN:
+    int 0x95 ; cls
+
     xor cx, cx
     mov cl, [cs:argc]
     cmp cl, 0
@@ -192,6 +194,9 @@ MAIN:
     jnz .skip_hacking_game
         call fallout_hacking_game
     .skip_hacking_game:
+
+    mov ah, 1
+    int 0x9b ; enable double buffering
 
     mov si, welcome_msg
     int 0x91 ; print

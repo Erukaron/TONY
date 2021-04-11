@@ -52,6 +52,8 @@ COLORDISPLAY_TEXT_SEGMENT       equ 0xb800
 COLORDISPLAY_TEXT_OFFSET        equ 0x0000
 COLORDISPLAY_GFX_SEGMENT        equ 0xa000
 COLORDISPLAY_GFX_OFFSET         equ 0x0000
+VIDEO_DOUBLE_BUFFER_SEGMENT     equ 0x8fc0
+VIDEO_DOUBLE_BUFFER_OFFSET      equ 0x0000
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------

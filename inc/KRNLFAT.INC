@@ -1649,6 +1649,10 @@ fat_callback_disk_operation:
 
     mov al, FAT_DISK_OPERATION_IDENT
     int 0x90
+    push ax
+        xor ah, ah
+        int 0x9b ; flip buffer
+    pop ax
 
     .done:
         iret

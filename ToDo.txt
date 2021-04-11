@@ -57,7 +57,7 @@ Bei Fehlender Keyboard Datei halten
 [x] Jump to reset vector am Kernelende
 [x] MLT (Machine Monitor) vgl. Apple 2 -> lesen (Zahl eingeben) von N Byte (zahl1-zahl2), schreiben von N Byte (addr zahl: zahl1 zahl2...), ausführen an bestimmter Stelle (zahlR/zahlG)
     [x] Automatisch am Kernelende aufrufen
-    [ ] Aufruf über Strg+Alt+Entf
+    [x] Aufruf über Strg+Alt+Entf
     [x] Verlassen über ESC für 3 Sekunden gerdückt halten
         [x] Dauerschleife -> Check ob ESC gehalten, wenn nicht Schleife verlassen, nicht beenden, wenn ja -> 3 Sekunden Timer runter zählen und checken ob esc weiter gehalten
 [ ] Eventanmeldung für Timer
@@ -70,6 +70,12 @@ Bei Fehlender Keyboard Datei halten
 [ ] Music queue interrupt
 [x] Beep on full keyboard buffer
 [x] Integrate dir into shell
+[ ] Edit
+    [x] Indexing does not work correctly (check navigating through interrpt.txt at the edges and changing sth.) --> Write character directly after load and press up key -> Content vanishes
+    [x] Speed up display (test if interrupt is that slow, or function used in edit) -> Display String filling the whole screen and check if this is slow or instant
+        [x] Double Buffering -> Write Buffer to 0xb000:0 and then flip it to 0xa000:0 (test on real hardware -> 0xb000:0 not writeable in bochs -> Otherwise write to 0x8fc00 to 0x9fbff)
+            [x] If not using double buffer: Write to video memory directly, do not use the flipping interrupt -> At start fill variable with seg:off to write to and use vars in function instead of constants -> Remove interrupt call at the end of functions (putch, put_pixel, cls)
+    [ ] Saving
 
 
 [x] Fallout Hacking Login Game -> Über Shellparameter von Shell nachladbar

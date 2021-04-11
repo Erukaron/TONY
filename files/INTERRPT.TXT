@@ -241,6 +241,17 @@ TONY interrupts:
     output:
         none
 -------------------------------------------------
+0x9b
+    Double buffer control:
+        Flip graphics buffer
+        Enable/Disable double buffering -> Clears the screen
+    input: 
+        ah ->   0: Flip buffer
+                1: Enable double buffering
+                2: Disable double buffering
+    output:
+        none  
+-------------------------------------------------
 
 
 

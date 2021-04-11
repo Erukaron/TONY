@@ -2,6 +2,7 @@ output
 tools/Bochs-2.6.11
 tools/hiew32demo.exe
 files/*.COM
+files/SYS_FLAG/*.COM
 *.PNG
 asm-text-editor-master.zip
 editor.asm

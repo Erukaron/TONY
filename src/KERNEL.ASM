@@ -423,6 +423,10 @@ install_display:
     mov bx, display_set_color
     call kernel_install_interrupt
 
+    mov al, 0x9b
+    mov bx, display_double_buffer_ctrl
+    call kernel_install_interrupt
+
     mov si, .wait_msg
     int 0x91
 

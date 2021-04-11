@@ -82,6 +82,7 @@ display_gfx_min_y        db 0
 display_gfx_cols         db 80
 display_gfx_lines        db 33
 
+display_double_buffer_enabled db FALSE
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
@@ -238,84 +239,69 @@ display_clear_screen:
     push es
     pusha
 
+    mov al, [cs:display_min_x]
+    mov [cs:display_current_x], al
+    mov al, [cs:display_min_y]
+    mov [cs:display_current_y], al
+    mov ax, [cs:display_gfx_min_x]
+    mov [cs:display_gfx_current_x], ax
+    mov al, [cs:display_gfx_min_y]
+    mov [cs:display_gfx_current_y], al
+
+    ; Select characters and segments according to video mode
     cmp byte [cs:display_video_mode], VIDEOMODE_BIOS_ASCII_GRAY_40x25
     jnz .not_VIDEOMODE_ASCII_GRAY_40x25
-        push GRAYSCALEDISPLAY_TEXT_SEGMENT
+        mov al, 0 ; character
+        mov ah, [cs:display_color]
+
+        push word GRAYSCALEDISPLAY_TEXT_SEGMENT
         pop es
         mov di, GRAYSCALEDISPLAY_TEXT_OFFSET
 
-        ; calculate no of bytes
-        mov ax, DISPLAY_GRAY_40x25_MAX_X + 1
-        mov cx, DISPLAY_GRAY_40x25_MAX_Y + 1
-        mul cx
-        shl ax, 1 ; one byte for char, one byte for color
-        mov cx, ax
-        .clear_VIDEOMODE_ASCII_GRAY_40x25:
-            mov al, 0 ; character
-            mov ah, [cs:display_color]
-            mov [es:di], ax
-            add di, 2
-        loop .clear_VIDEOMODE_ASCII_GRAY_40x25
-
-        mov al, [cs:display_min_x]
-        mov [cs:display_current_x], al
-        mov al, [cs:display_min_y]
-        mov [cs:display_current_y], al
+        mov cx, 0x2000
     .not_VIDEOMODE_ASCII_GRAY_40x25:
 
     cmp byte [cs:display_video_mode], VIDEOMODE_BIOS_ASCII_COLOR_80x25
     jnz .not_VIDEOMODE_ASCII_COLOR_80x25
-        push COLORDISPLAY_TEXT_SEGMENT
+        mov al, 0 ; character
+        mov ah, [cs:display_color]
+
+        push word COLORDISPLAY_TEXT_SEGMENT
         pop es
         mov di, COLORDISPLAY_TEXT_OFFSET
 
-        ; calculate no of bytes
-        mov ax, DISPLAY_COLOR_80x25_MAX_X + 1
-        mov cx, DISPLAY_COLOR_80x25_MAX_Y + 1
-        mul cx
-        shl ax, 1 ; one byte for char, one byte for color
-        mov cx, ax
-        .clear_VIDEOMODE_ASCII_COLOR_80x25:
-            mov al, 0 ; character
-            mov ah, [cs:display_color]
-            mov [es:di], ax
-            add di, 2
-        loop .clear_VIDEOMODE_ASCII_COLOR_80x25
-
-        mov al, [cs:display_min_x]
-        mov [cs:display_current_x], al
-        mov al, [cs:display_min_y]
-        mov [cs:display_current_y], al
+        mov cx, 0x4000
     .not_VIDEOMODE_ASCII_COLOR_80x25:
 
     cmp byte [cs:display_video_mode], VIDEOMODE_BIOS_GFX_320_200_COLOR
     jnz .not_VIDEOMODE_GFX_320_200_COLOR
-        push COLORDISPLAY_GFX_SEGMENT
+        mov al, [cs:display_gfx_bg_color]
+        mov ah, [cs:display_gfx_bg_color]
+
+        push word COLORDISPLAY_GFX_SEGMENT
         pop es
         mov di, COLORDISPLAY_GFX_OFFSET
 
-        ; calculate no of bytes
-        mov ax, DISPLAY_GFX_SCREEN_WIDTH
-        mov cx, DISPLAY_GFX_SCREEN_HEIGHT
-        mul cx
-        mov cx, ax
-        .clear_VIDEOMODE_GFX_320_200_COLOR:
-            mov al, [cs:display_gfx_bg_color] 
-            mov [es:di], al
-            inc di
-        loop .clear_VIDEOMODE_GFX_320_200_COLOR
-
-        mov ax, [cs:display_gfx_min_x]
-        mov [cs:display_gfx_current_x], ax
-        mov al, [cs:display_gfx_min_y]
-        mov [cs:display_gfx_current_y], al
+        mov cx, 0x8000
     .not_VIDEOMODE_GFX_320_200_COLOR:
 
-    call display_update_cursor
+    ; If using double buffer overwrite video buffer with double buffer
+    cmp byte [cs:display_double_buffer_enabled], TRUE
+    jnz .no_double_buffer ; No double buffering
+        push word VIDEO_DOUBLE_BUFFER_SEGMENT
+        pop es
+        mov di, VIDEO_DOUBLE_BUFFER_OFFSET
+    .no_double_buffer:
+    
+    .loop_clear_buffer:
+        mov word [es:di], ax
+        add di, 2
+    loop .loop_clear_buffer
 
-    popa
-    pop es
-    iret
+    .done:
+        popa
+        pop es
+        iret
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
@@ -359,8 +345,16 @@ display_putch:
     pusha
     push es
 
-    ; set es
-    push word COLORDISPLAY_TEXT_SEGMENT
+    ; set es to target memory (directly write to video memory or write to double buffer)
+    cmp byte [cs:display_double_buffer_enabled], TRUE
+    jnz .no_double_buffer
+        push word VIDEO_DOUBLE_BUFFER_SEGMENT
+        mov word [cs:.buffer_offset], VIDEO_DOUBLE_BUFFER_OFFSET
+        jmp .after_buffer_select
+    .no_double_buffer:
+        push word COLORDISPLAY_TEXT_SEGMENT
+        mov word [cs:.buffer_offset], COLORDISPLAY_TEXT_OFFSET
+    .after_buffer_select:
     pop es
 
     mov [cs:.character], al
@@ -418,7 +412,6 @@ display_putch:
     inc byte [cs:display_current_x]
 
     .display_putch_done:
-        call display_update_cursor
         pop es
         popa
         iret
@@ -448,7 +441,7 @@ display_putch:
         xor ax, ax
         mov al, [cs:display_cols]
         shl ax, 1 ; each entry in video memory is two bytes in size (character and color) -> multiply by 2
-        mov di, COLORDISPLAY_TEXT_OFFSET
+        mov di, [cs:.buffer_offset]
         add di, ax
 
         ; For subtraction of cols from di
@@ -474,7 +467,7 @@ display_putch:
             loop .lf_shift
 
         ; get first char of last line
-        mov di, COLORDISPLAY_TEXT_OFFSET
+        mov di, [cs:.buffer_offset]
         xor ax, ax
         xor cx, cx
         mov al, [cs:display_lines]
@@ -526,6 +519,7 @@ display_putch:
         jmp .display_putch_done
 
     .character db 0
+    .buffer_offset dw 0
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
@@ -543,8 +537,16 @@ display_gfx_putch:
     pusha
     push es
 
-    ; set es
-    push word COLORDISPLAY_GFX_SEGMENT
+    ; set es to target memory (directly write to video memory or write to double buffer)
+    cmp byte [cs:display_double_buffer_enabled], TRUE
+    jnz .no_double_buffer
+        push word VIDEO_DOUBLE_BUFFER_SEGMENT
+        mov word [cs:.buffer_offset], VIDEO_DOUBLE_BUFFER_OFFSET
+        jmp .after_buffer_select
+    .no_double_buffer:
+        push word COLORDISPLAY_GFX_SEGMENT
+        mov word [cs:.buffer_offset], COLORDISPLAY_GFX_OFFSET
+    .after_buffer_select:
     pop es
 
     cmp al, LINEFEED
@@ -586,12 +588,12 @@ display_gfx_putch:
         pop ax
     .no_insert_lf:
 
-    mov [cs:.character], al
+    xor ah, ah
 
-    xor ax, ax
-    mov al, [cs:.character]
-    cmp al, ASCII_LAST_PRINTABLE_CHAR ; if not printable, dont print
-    ja .display_putch_done
+    ; Same check is done before?
+    ;cmp al, ASCII_LAST_PRINTABLE_CHAR ; if not printable, dont print
+    ;ja .display_putch_done
+
     ; offset removed with new font files supporting extended ascii chars
     ;sub al, ASCII_FIRST_PRINTABLE_CHAR ; subtract offset
     shl ax, 1 ; multiply with 2
@@ -661,7 +663,6 @@ display_gfx_putch:
     ja .lf
 
     .display_putch_done:
-        call display_update_cursor
         pop es
         popa
         iret
@@ -697,7 +698,7 @@ display_gfx_putch:
             mov ax, DISPLAY_GFX_SCREEN_WIDTH
             mov cx, DISPLAY_GFX_FONT_HEIGHT
             mul cx
-            mov di, COLORDISPLAY_GFX_OFFSET
+            mov di, [cs:.buffer_offset]
             add di, ax
 
             ; bx is later used to determine the new position of the pixel (6 rows above the current pixel)
@@ -725,7 +726,7 @@ display_gfx_putch:
             loop .lf_shift
 
         ; get first char of last line into di
-        mov di, COLORDISPLAY_GFX_OFFSET
+        mov di, [cs:.buffer_offset]
         xor ax, ax
         xor cx, cx
         mov al, DISPLAY_GFX_SCREEN_HEIGHT
@@ -770,7 +771,6 @@ display_gfx_putch:
 
         ; Replace character with space
         sub word [cs:display_gfx_current_x], DISPLAY_GFX_FONT_WIDTH
-        call display_update_cursor
         mov al, SPACE
         int 0x90
 
@@ -779,8 +779,8 @@ display_gfx_putch:
 
         jmp .display_putch_done
 
-    .character db 0
     .font_character dw 0
+    .buffer_offset  dw 0
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
@@ -868,7 +868,8 @@ display_print:
         jmp .exec
 
     .done:
-        call display_update_cursor
+        xor ax, ax
+        int 0x9b ; flip buffer
 
         popa
         iret
@@ -932,9 +933,17 @@ display_put_pixel:
     cmp bx, [cs:display_gfx_max_x]
     ja .done
 
-    mov cx, COLORDISPLAY_GFX_SEGMENT
+    ; set es to target memory (directly write to video memory or write to double buffer)
+    cmp byte [cs:display_double_buffer_enabled], TRUE
+    jnz .no_double_buffer
+        mov cx, VIDEO_DOUBLE_BUFFER_SEGMENT
+        mov di, VIDEO_DOUBLE_BUFFER_OFFSET
+        jmp .after_buffer_select
+    .no_double_buffer:
+        mov cx, COLORDISPLAY_GFX_SEGMENT
+        mov di, COLORDISPLAY_GFX_OFFSET
+    .after_buffer_select:
     mov es, cx
-    mov di, COLORDISPLAY_GFX_OFFSET
 
     ; x offset
     add di, bx
@@ -1204,6 +1213,137 @@ display_set_color:
     .gfx_mode:
     mov [cs:display_gfx_bg_color], ah
     mov [cs:display_gfx_fg_color], al
+
+    .done:
+        iret
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Writes the contents of the video buffer to the video memory in text mode
+;
+; input: 
+;   none
+;
+; output:
+;   none
+;-------------------------------------------------------------------------------
+display_text_flip_buffer:
+    pusha
+    pushf
+    push es
+    push ds
+        push word COLORDISPLAY_TEXT_SEGMENT
+        pop es
+        push word VIDEO_DOUBLE_BUFFER_SEGMENT
+        pop ds
+        mov di, COLORDISPLAY_TEXT_OFFSET
+        mov si, VIDEO_DOUBLE_BUFFER_OFFSET
+        mov cx, 0x4000 ; *2 for size of video memory in text mode
+        cld
+        cli ; no iterrupts while swapping buffer
+            rep movsw
+        sti 
+    pop ds
+    pop es
+    popf
+    popa
+    ret
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Writes the contents of the video buffer to the video memory in gfx mode
+;
+; input: 
+;   none
+;
+; output:
+;   none
+;-------------------------------------------------------------------------------
+display_gfx_flip_buffer:
+    pusha
+    pushf
+    push es
+    push ds
+        push word COLORDISPLAY_GFX_SEGMENT
+        pop es
+        push word VIDEO_DOUBLE_BUFFER_SEGMENT
+        pop ds
+        mov di, COLORDISPLAY_GFX_OFFSET
+        mov si, VIDEO_DOUBLE_BUFFER_OFFSET
+        mov cx, 0x8000 ; *2 for size of video memory in gfx mode
+        cld
+        cli ; no iterrupts while swapping buffer
+            rep movsw
+        sti 
+    pop ds
+    pop es
+    popf
+    popa
+    ret
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Double buffer control:
+;   Flip graphics buffer
+;   Enable/Disable double buffering -> Clears the screen
+;
+; input: 
+;   ah -> 0: Flip buffer
+;         1: Enable double buffering
+;         2: Disable double buffering
+;
+; output:
+;   none
+;-------------------------------------------------------------------------------
+display_double_buffer_ctrl:
+    sti ; enable hardware interrupts
+
+    cmp ah, 0
+    jz .flip
+
+    cmp ah, 1
+    jz .enable
+
+    cmp ah, 2
+    jz .disable
+
+    jmp .done
+
+    .flip:
+        cmp byte [cs:display_double_buffer_enabled], FALSE
+        jz .done ; Do not write to video memory, if double buffering is not enabled
+
+        cmp byte [cs:display_video_mode], VIDEOMODE_BIOS_ASCII_GRAY_40x25
+        jnz .not_VIDEOMODE_ASCII_GRAY_40x25
+            call display_text_flip_buffer
+            jmp .upd_cursor
+        .not_VIDEOMODE_ASCII_GRAY_40x25:
+
+        cmp byte [cs:display_video_mode], VIDEOMODE_BIOS_ASCII_COLOR_80x25
+        jnz .not_VIDEOMODE_ASCII_COLOR_80x25
+            call display_text_flip_buffer
+            jmp .upd_cursor
+        .not_VIDEOMODE_ASCII_COLOR_80x25:
+
+        cmp byte [cs:display_video_mode], VIDEOMODE_BIOS_GFX_320_200_COLOR
+        jnz .not_VIDEOMODE_GFX_320_200_COLOR
+            call display_gfx_flip_buffer
+            jmp .upd_cursor
+        .not_VIDEOMODE_GFX_320_200_COLOR:
+
+        .upd_cursor:
+            call display_update_cursor
+            jmp .done
+
+    .enable:
+        mov byte [cs:display_double_buffer_enabled], TRUE
+        int 0x95 ; clear screen -> Update buffer with current screen color
+        jmp .done
+
+    .disable:
+        mov byte [cs:display_double_buffer_enabled], FALSE
+        int 0x95 ; clear screen -> Update video memory with current screen color
+        jmp .done
 
     .done:
         iret

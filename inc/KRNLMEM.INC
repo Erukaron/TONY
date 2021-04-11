@@ -36,9 +36,14 @@ MEMORY_SMALLEST_UNIT    equ 16
 ; Variables
 ;-------------------------------------------------------------------------------
 memory_master_map: ; 4 kb -> Each bit represents 512/(4*8)=16 Bytes
-    times 0x0200 db 0xff ; Kernel ->  64kB ( 64kB / 16B / 8b)
-    times 0x0200 db 0xff ; Stack  ->  64kB ( 64kB / 16B / 8b)
-    times 0x0c00 db 0x00 ; Free   -> 384kB (384kB / 16B / 8b)
+    times 0x0200 db 0xff ; Kernel ->  64kB ( 64kB / 16B / 8b) | 0x00000 - 0x0ffff
+    times 0x0200 db 0xff ; Stack  ->  64kB ( 64kB / 16B / 8b) | 0x10000 - 0x1ffff
+    times 0x0c00 db 0x00 ; Free   -> 384kB (384kB / 16B / 8b) | 0x20000 - 0x7ffff
+    ; End of conventional memory
+
+    ; Extended memory
+    times 0x01f8 db 0x00 ; Free   ->  63kB ( 63kB / 16B / 8b) | 0x80000 - 0x8fbff
+    times 0x0200 db 0xff ; V-Buff ->  64kB ( 64kB / 16B / 8b) | 0x8fc00 - 0x9fbff
 memory_master_map_end:
 ;-------------------------------------------------------------------------------
 
@@ -77,14 +82,26 @@ memory_initialize_all:
 
         xor di, di
 
-        mov cx, 0xffff
+        mov cx, 0x8000
         .loop_init_segment:
-            mov [es:di], byte 0
-            inc di
+            mov [es:di], word 0
+            add di, 2
         loop .loop_init_segment
 
-        cmp ax, 0x8000
+        cmp ax, 0x9000
         jae .loop
+
+    .init_to_9fbff:
+        mov ax, 0x9000
+        mov es, ax
+
+        xor di, di
+
+        mov cx, 0xfbff
+        .loop_incomplete_segment:
+            mov [es:di], byte 0
+            inc di
+        loop .loop_incomplete_segment
 
     pop ax
     pop cx

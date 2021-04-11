@@ -427,7 +427,7 @@ keyboard_callback:
 ; Removes the returned key from the buffer
 ;
 ; input: 
-;   none
+;   AH -> 0xff for not putting the char to screen
 ;
 ; output:
 ;   AL -> character
@@ -445,6 +445,11 @@ keyboard_getch:
         mov byte [cs:.display_cursor], 1
         mov al, [cs:keyboard_video_mode_cursor]
         int 0x90
+
+        push ax
+            xor ah, ah
+            int 0x9b ; flip buffer
+        pop ax
 
     .no_cursor:
     sti ; do not block interrupts -> keyboard interrupt needs to work...
@@ -491,6 +496,11 @@ keyboard_getch:
         je .ret
 
         int 0x90 ; display character
+
+        push ax
+            xor ah, ah
+            int 0x9b ; flip buffer
+        pop ax
     .ret:
         iret
 
@@ -532,6 +542,10 @@ keyboard_readln:
         je .loop
 
         int 0x90 ; putch
+        push ax
+            xor ah, ah
+            int 0x9b ; flip buffer
+        pop ax
         stosb ; Save to di
         dec cx
         jmp .loop ; Give the user the chance to enter bs and cr
@@ -546,6 +560,10 @@ keyboard_readln:
 
         mov al, ASCII_BS
         int 0x90 ; putch
+        push ax
+            xor ah, ah
+            int 0x9b ; flip buffer
+        pop ax
 
         jmp .loop
 
@@ -556,6 +574,10 @@ keyboard_readln:
         int 0x90
         mov al, ASCII_LF
         int 0x90
+        push ax
+            xor ah, ah
+            int 0x9b ; flip buffer
+        pop ax
 
         ; null-terminate the string 
         mov al, 0
