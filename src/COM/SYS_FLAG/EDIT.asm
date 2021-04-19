@@ -495,6 +495,92 @@ handle_display:
         pop cx
     loop .loop_lines
 
+    push ds
+        push cs
+        pop ds
+
+        ; Get current display coords and save them
+        mov ah, 1
+        int 0x98
+        pusha
+
+            ; Display current filename, current column and pointer in last line
+            mov bx, 0
+            xor dx, dx
+            mov dl, [cs:page_lines]
+            mov ah, 1
+            int 0x99 ; Set screen position to last line
+
+            ; Display filename
+            mov si, .file_ident
+            int 0x91
+            mov si, argv
+            int 0x91 ; print
+
+            ; Display column
+            mov si, .column_ident
+            int 0x91 ; print
+            mov dl, [cs:mtx_col]
+            int 0xe4 ; convert dl into printable hex format (dx)
+            mov al, dh ; high nibble
+            int 0x90 ; putch
+            mov al, dl ; low nibble
+            int 0x90 ; putch
+
+            ; Display line
+            mov si, .line_ident
+            int 0x91 ; print
+            mov dl, [cs:mtx_line]
+            int 0xe4 ; convert dl into printable hex format (dx)
+            mov al, dh ; high nibble
+            int 0x90 ; putch
+            mov al, dl ; low nibble
+            int 0x90 ; putch
+
+            ; Display current position in file
+            mov si, .buffer_current_ident
+            int 0x91 ; print
+            mov bx, [cs:buffer_current_pos] 
+            mov dl, bh ; high byte of current position
+                int 0xe4 ; convert dl into printable hex format (dx)
+                mov al, dh ; high nibble
+                int 0x90 ; putch
+                mov al, dl ; low nibble
+                int 0x90 ; putch
+            mov dl, bl ; low byte of current position
+                int 0xe4 ; convert dl into printable hex format (dx)
+                mov al, dh ; high nibble
+                int 0x90 ; putch
+                mov al, dl ; low nibble
+                int 0x90 ; putch
+
+            ; Display file size
+            mov si, .buffer_last_ident
+            int 0x91 ; print
+            mov bx, [cs:buffer_last_pos] 
+            mov dl, bh ; high byte of last position
+                int 0xe4 ; convert dl into printable hex format (dx)
+                mov al, dh ; high nibble
+                int 0x90 ; putch
+                mov al, dl ; low nibble
+                int 0x90 ; putch
+            mov dl, bl ; low byte of last position
+                int 0xe4 ; convert dl into printable hex format (dx)
+                mov al, dh ; high nibble
+                int 0x90 ; putch
+                mov al, dl ; low nibble
+                int 0x90 ; putch    
+
+            ; Display excape hint
+            mov si, .esc_ident
+            int 0x91 ; print
+
+        ; Restore screen
+        mov ah, 1
+        popa
+        int 0x99
+    pop ds
+
     xor ah, ah
     int 0x9b ; flip double buffer
 
@@ -523,7 +609,7 @@ handle_display:
 
     .crlf:
         mov al, ASCII_LF
-        int 0x90
+        int 0x90 ; putch
 
         ; set the remaining cols to 1, so the current line ends immediately
         mov cx, 1
@@ -544,6 +630,12 @@ handle_display:
         ret
 
     .line_position_in_stack dw 0
+    .file_ident             db "---F:", 0
+    .column_ident           db "   C:0x", 0
+    .line_ident             db "   L:0x", 0
+    .buffer_current_ident   db "   B:0x", 0
+    .buffer_last_ident      db "/0x", 0
+    .esc_ident              db "                (ESC):Menu", 0
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------

@@ -221,7 +221,7 @@ TONY interrupts:
     Set current screen position 
     input:
         AH -> Flags
-            0: Get position
+            0: Set position
             1: (GFX mode) set text cursor referenced to line and column number instead of pixel
         BX -> X-position
         DX -> Y-Position
