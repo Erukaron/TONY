@@ -28,15 +28,34 @@ mkdir build\COM\SYS_FLAG
 echo.
 
 echo Creating working copies
-copy src\COM\*.* build\COM /Y
-copy src\COM\SYS_FLAG\*.* build\COM\SYS_FLAG /Y
-copy inc\*.* build\COM /Y
-copy inc\*.* build\COM\SYS_FLAG /Y
+:: For ASM files
+copy src\COM\*.asm build\COM /Y
+copy src\COM\SYS_FLAG\*.asm build\COM\SYS_FLAG /Y
+copy inc\*.INC build\COM /Y
+copy inc\*.INC build\COM\SYS_FLAG /Y
+:: For C files
+copy tools\smlrc.exe build\COM /Y
+copy tools\smlrc.exe build\COM\SYS_FLAG /Y
+copy src\COM\*.c build\COM /Y
+copy src\COM\SYS_FLAG\*.c build\COM\SYS_FLAG /Y
+copy src\COM\*.h build\COM /Y
+copy src\COM\SYS_FLAG\*.h build\COM\SYS_FLAG /Y
+copy inc\*.h build\COM /Y
+copy inc\*.h build\COM\SYS_FLAG /Y
 echo.
 
 :: Nasm needs to load the include files from the current directory, so switch to build dir
 cd build\COM
 
+:: Compile c files
+for %%f in (*.c) do (
+    echo Compile file: %%f
+    smlrc -seg16 %%f %%~nf.ASM
+    if not exist %%~nf.ASM goto THROW_ERROR
+)
+echo.
+
+:: Assemble
 for %%f in (*.ASM) do (
     echo Assemble file: %%f
     nasm %%f -f bin -o ..\..\bin\COM\%%~nf.COM
@@ -44,7 +63,15 @@ for %%f in (*.ASM) do (
 )
 echo.
 
+:: Now the same for system files
 cd SYS_FLAG
+for %%f in (*.c) do (
+    echo Compile file: %%f
+    smlrc -seg16 %%f %%~nf.ASM
+    if not exist %%~nf.ASM goto THROW_ERROR
+)
+echo.
+
 for %%f in (*.ASM) do (
     echo Assemble system file: %%f
     nasm %%f -f bin -o ..\..\..\bin\COM\SYS_FLAG\%%~nf.COM
@@ -62,7 +89,7 @@ echo.
 
 :: Wait a little bit, so that the delete does not fail
 ::ping localhost -n 2 > nul
-
+goto :eof
 if !removeBin!==true (
     rd /S /Q bin
 ) else (

@@ -76,7 +76,7 @@ Bei Fehlender Keyboard Datei halten
         [x] Double Buffering -> Write Buffer to 0xb000:0 and then flip it to 0xa000:0 (test on real hardware -> 0xb000:0 not writeable in bochs -> Otherwise write to 0x8fc00 to 0x9fbff)
             [x] If not using double buffer: Write to video memory directly, do not use the flipping interrupt -> At start fill variable with seg:off to write to and use vars in function instead of constants -> Remove interrupt call at the end of functions (putch, put_pixel, cls)
     [ ] Saving
-
+[ ] Scheduler
 
 [x] Fallout Hacking Login Game -> Über Shellparameter von Shell nachladbar
     [x] Animation -> Time based -> -auto
@@ -88,6 +88,7 @@ Bei Fehlender Keyboard Datei halten
     [x] Auf aktivierten Video Mode prüfen und entsprechend arbeiten
     [x] fast mode
     [x] variablen für display_fill funktion bereitstellen und dann nur eine funktion
+
 [ ] Shell: Hat eine path variable -> in allen paths wird nach Programmen zur Ausführung gesucht
     [ ] Begrenzter Befehlssatz: dir, cd, cls, color, exit, path, set path, halt, type
     [ ] Rest über Programme
@@ -95,72 +96,6 @@ Bei Fehlender Keyboard Datei halten
 
 
 [ ] COSIC eigenes Programm
-
-[ ] Testfälle addieren:
-    [ ] literal, literal
-        [ ] zahlen gleich viele zeichen
-            [ ] positiv, positiv
-            [ ] positiv, negativ
-            [ ] negativ, positiv
-            [ ] negativ, negativ
-        [ ] zahl 1 mehr zeichen
-            [ ] positiv, positiv
-            [ ] positiv, negativ
-            [ ] negativ, positiv
-            [ ] negativ, negativ
-        [ ] zahl 2 mehr zeichen
-            [ ] positiv, positiv
-            [ ] positiv, negativ
-            [ ] negativ, positiv
-            [ ] negativ, negativ
-    [ ] literal, var
-        [ ] zahlen gleich viele zeichen
-            [ ] positiv, positiv
-            [ ] positiv, negativ
-            [ ] negativ, positiv
-            [ ] negativ, negativ
-        [ ] zahl 1 mehr zeichen
-            [ ] positiv, positiv
-            [ ] positiv, negativ
-            [ ] negativ, positiv
-            [ ] negativ, negativ
-        [ ] zahl 2 mehr zeichen
-            [ ] positiv, positiv
-            [ ] positiv, negativ
-            [ ] negativ, positiv
-            [ ] negativ, negativ
-    [ ] var, literal
-        [ ] zahlen gleich viele zeichen
-            [ ] positiv, positiv
-            [ ] positiv, negativ
-            [ ] negativ, positiv
-            [ ] negativ, negativ
-        [ ] zahl 1 mehr zeichen
-            [ ] positiv, positiv
-            [ ] positiv, negativ
-            [ ] negativ, positiv
-            [ ] negativ, negativ
-        [ ] zahl 2 mehr zeichen
-            [ ] positiv, positiv
-            [ ] positiv, negativ
-            [ ] negativ, positiv
-            [ ] negativ, negativ
-    [ ] var, var
-        [ ] zahlen gleich viele zeichen
-            [ ] positiv, positiv
-            [ ] positiv, negativ
-            [ ] negativ, positiv
-            [ ] negativ, negativ
-        [ ] zahl 1 mehr zeichen
-            [ ] positiv, positiv
-            [ ] positiv, negativ
-            [ ] negativ, positiv
-            [ ] negativ, negativ
-        [ ] zahl 2 mehr zeichen
-            [ ] positiv, positiv
-            [ ] positiv, negativ
-            [ ] negativ, positiv
-            [ ] negativ, negativ
 [ ] Interpretierte Sprache (COBOL + BASIC = COSIC)
     Befehlssatz:
         ; Kommentar

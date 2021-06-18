@@ -50,6 +50,10 @@ mlt_call_via_keyboard_event:
 
         mov al, ASCII_LF
         int 0x90 ; linbreak at end
+        push ax
+            xor ah, ah
+            int 0x9b ; Flip
+        pop ax
     pop ax
     retf
 ;-------------------------------------------------------------------------------
@@ -90,6 +94,10 @@ mlt_start:
     .loop:
         mov al, '*'
         int 0x90
+        push ax
+            xor ah, ah
+            int 0x9b ; Flip
+        pop ax
 
         mov cx, MLT_BUFFER_SIZE
         mov di, .mlt_buffer
@@ -213,6 +221,10 @@ mlt_start:
         mov si, .mlt_empty_dummy
         mov al, 2 ; error
         int 0x97
+        push ax
+            xor ah, ah
+            int 0x9b ; Flip
+        pop ax
 
         jmp .loop
 
@@ -317,6 +329,11 @@ mlt_start:
                                     ; Add a space
                                     mov al, ASCII_SP
                                     int 0x90
+
+                                    push ax
+                                        xor ah, ah
+                                        int 0x9b ; Flip
+                                    pop ax
                                 loop .read_loop_line_binary
                             pop cx
                             pop si
@@ -341,12 +358,20 @@ mlt_start:
                             jz .read_loop_line_ascii_crlf
 
                             int 0x90
+                            push ax
+                                xor ah, ah
+                                int 0x9b ; Flip
+                            pop ax
                             jmp .read_loop_line_ascii_done
 
                             ; Do not print cr or lf -> structure will be damaged
                             .read_loop_line_ascii_crlf:
                                 mov al, ASCII_SP
                                 int 0x90
+                                push ax
+                                    xor ah, ah
+                                    int 0x9b ; Flip
+                                pop ax
 
                         .read_loop_line_ascii_done: 
                         loop .read_loop_line_ascii
@@ -361,6 +386,10 @@ mlt_start:
 
         mov al, ASCII_LF
         int 0x90
+        push ax
+            xor ah, ah
+            int 0x9b ; Flip
+        pop ax
 
         jmp .loop
 

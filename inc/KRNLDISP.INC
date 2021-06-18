@@ -46,11 +46,11 @@ DISPLAY_GFX_SCREEN_HEIGHT   equ 200
 ;-------------------------------------------------------------------------------
 display_video_mode     db VIDEOMODE_BIOS_ASCII_GRAY_40x25
 
-display_color          db 0x06 ; high nibble is background, low nibble foreground
-display_info_color     db 0x09 ; high nibble is background, low nibble foreground
-display_warning_color  db 0x0e ; high nibble is background, low nibble foreground
-display_error_color    db 0x0c ; high nibble is background, low nibble foreground
-display_critical_color db 0x03 ; high nibble is background, low nibble foreground
+display_color          db 0x86 ; high nibble is background, low nibble foreground
+display_info_color     db 0x89 ; high nibble is background, low nibble foreground
+display_warning_color  db 0x8e ; high nibble is background, low nibble foreground
+display_error_color    db 0x8c ; high nibble is background, low nibble foreground
+display_critical_color db 0x83 ; high nibble is background, low nibble foreground
 display_enable_blink   db FALSE ; enables blinking or high intensity color
 display_current_x      db 0
 display_current_y      db 0
@@ -1201,6 +1201,8 @@ display_set_screen_pos:
 ;   none
 ;-------------------------------------------------------------------------------
 display_set_color:
+    push ax
+
     sti ; Allow hardware interrupts to occur while processing software interrupts
 
     cmp byte [cs:display_video_mode], VIDEOMODE_BIOS_GFX_320_200_COLOR
@@ -1208,6 +1210,16 @@ display_set_color:
 
     ; text mode
     mov [cs:display_color], al
+    ; Set prefix colors: high nibble is background
+    and al, 0xf0
+    and byte [cs:display_info_color], 0x0f
+    or byte [cs:display_info_color], al
+    and byte [cs:display_warning_color], 0x0f
+    or byte [cs:display_warning_color], al
+    and byte [cs:display_error_color], 0x0f
+    or byte [cs:display_error_color], al
+    and byte [cs:display_critical_color], 0x0f
+    or byte [cs:display_critical_color], al
     jmp .done
 
     .gfx_mode:
@@ -1215,6 +1227,7 @@ display_set_color:
     mov [cs:display_gfx_fg_color], al
 
     .done:
+        pop ax
         iret
 ;-------------------------------------------------------------------------------
 

@@ -131,7 +131,7 @@ kernel_setup:
 
     mov ah, 0b110 ; Alt, Ctrl
     mov al, SCAN_CODE_DELETE
-    ;mov al, SCAN_CODE_M ; -> debug
+    mov al, SCAN_CODE_M ; -> debug
     mov bx, cs
     mov dx, mlt_call_via_keyboard_event
     int 0xb3

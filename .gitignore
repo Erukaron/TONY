@@ -8,3 +8,7 @@ asm-text-editor-master.zip
 editor.asm
 text-editor-main.asm
 better_editor.asm
+BCHSBIOS.ASM
+BOCHSBIOS.C
+BOCHSBIOS.H
+tools/smlrc.exe

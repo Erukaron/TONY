@@ -55,6 +55,8 @@ stack_start             dw 0
 
 escape_handler_segment  dw 0
 escape_handler_offset   dw 0
+exit_handler_segment    dw 0
+exit_handler_offset     dw 0
 left_handler_segment    dw 0
 left_handler_offset     dw 0
 right_handler_segment   dw 0
@@ -189,7 +191,17 @@ register_events:
     mov dx, handle_escape
     int 0xb3
     mov [cs:escape_handler_segment], bx
-    mov [cs:escape_handler_offset], bx
+    mov [cs:escape_handler_offset], dx
+
+    ; Ctrl + e -> Exit
+    mov ah, 0b10 ; Ctrl modifier
+    mov al, 0x80 ; on key release
+    or al, SCAN_CODE_E
+    mov bx, cs
+    mov dx, handle_exit
+    int 0xb3
+    mov [cs:exit_handler_segment], bx
+    mov [cs:exit_handler_offset], dx
 
     ; Left
     mov ah, 0
@@ -198,7 +210,7 @@ register_events:
     mov dx, handle_left
     int 0xb3
     mov [cs:left_handler_segment], bx
-    mov [cs:left_handler_offset], bx
+    mov [cs:left_handler_offset], dx
 
     ; Right
     mov ah, 0
@@ -207,7 +219,7 @@ register_events:
     mov dx, handle_right
     int 0xb3
     mov [cs:right_handler_segment], bx
-    mov [cs:right_handler_offset], bx
+    mov [cs:right_handler_offset], dx
 
     ; Down
     mov ah, 0
@@ -216,7 +228,7 @@ register_events:
     mov dx, handle_down
     int 0xb3
     mov [cs:down_handler_segment], bx
-    mov [cs:down_handler_offset], bx
+    mov [cs:down_handler_offset], dx
 
     ; Up
     mov ah, 0
@@ -225,7 +237,7 @@ register_events:
     mov dx, handle_up
     int 0xb3
     mov [cs:up_handler_segment], bx
-    mov [cs:up_handler_offset], bx
+    mov [cs:up_handler_offset], dx
 
     ret
 ;-------------------------------------------------------------------------------
@@ -236,6 +248,12 @@ deregister_events:
     mov ah, 0x80
     mov bx, [cs:escape_handler_segment]
     mov dx, [cs:escape_handler_offset]
+    int 0xb3
+
+    ; Exit
+    mov ah, 0x80
+    mov bx, [cs:exit_handler_segment]
+    mov dx, [cs:exit_handler_offset]
     int 0xb3
 
     ; Left
@@ -274,8 +292,55 @@ handle_escape:
 
     int 0x95 ; cls
 
-    ; ToDo: Show commands (ctrl+e is exit)
-    xchg bx, bx
+    push ds
+    push si
+        push cs
+        pop ds
+        mov si, .info
+
+        int 0x91 ; print str
+    pop si
+    pop ds
+
+    xor ah, ah
+    int 0x9b ; flip double buffer
+
+    int 0xb0 ; Getch
+    int 0xb5 ; Clear keyboard buffer
+
+    call handle_display ; display file content
+    call update_cursor  ; set cursor position
+    call redraw_cursor  ; display cursor
+
+    .done:
+        retf
+
+    .info:
+    db "EDIT.COM Cheatsheet", ASCII_CR, ASCII_LF
+    db ASCII_CR, ASCII_LF
+    db ASCII_CR, ASCII_LF
+    db "    Hotkeys:", ASCII_CR, ASCII_LF
+    db ASCII_CR, ASCII_LF
+    db "        [CTRL]+[E]          : Exit program", ASCII_CR, ASCII_LF
+    db "        [CTRL]+[S]          : Save to current file", ASCII_CR, ASCII_LF
+    db "        [CTRL]+[ALT]+[S]    : Save to file", ASCII_CR, ASCII_LF
+    db "        [CTRL]+[O]          : Open file", ASCII_CR, ASCII_LF
+    db "        [CTRL]+[N]          : Clear buffer and remove current file", ASCII_CR, ASCII_LF
+    db ASCII_CR, ASCII_LF
+    db ASCII_CR, ASCII_LF
+    db ASCII_CR, ASCII_LF
+    db "    Press any key to leave this screen..."
+    db 0
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Handles the exit procedure
+;-------------------------------------------------------------------------------
+handle_exit:
+    cmp byte [cs:init_finished], TRUE
+    jnz .done
+
+    int 0x95 ; cls
 
     cli
     mov sp, [cs:stack_start] ; restore stack from program setup
