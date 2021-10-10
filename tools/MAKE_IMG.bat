@@ -46,12 +46,22 @@ mkdir tmpfiles_sys_flag\bin
 echo.
 
 echo Creating working copies
+:: ASM
 copy src\*.* build\ /Y
 copy inc\*.* build\ /Y
+:: C
+copy tools\smlrc.exe build\ /Y
 echo.
 
 :: Nasm needs to load the include files from the current directory, so switch to build dir
 cd build
+
+:: Compile additional (C) files first
+for %%f in (*.c) do (
+    echo Compile file: %%f
+    smlrc -seg16 %%f %%~nf.ASM
+    if not exist %%~nf.ASM goto THROW_ERROR
+)
 
 for %%f in (*.ASM) do (
 	echo Assemble file: %%f

@@ -60,6 +60,7 @@ Bei Fehlender Keyboard Datei halten
     [x] Aufruf über Strg+Alt+Entf
     [x] Verlassen über ESC für 3 Sekunden gerdückt halten
         [x] Dauerschleife -> Check ob ESC gehalten, wenn nicht Schleife verlassen, nicht beenden, wenn ja -> 3 Sekunden Timer runter zählen und checken ob esc weiter gehalten
+[ ] ASN Command Vergleich SWTPC Flex
 [ ] Eventanmeldung für Timer
 [ ] Mausinterrupts bc - bf -> Position lesen (Tasten + Posi), setzen (Posi), Hinzufügen / entfernen von Aufruf  einer Funktion bei bestimmtem Event, Einstellungen (Cursor aktivieren/deaktivieren, Cursor anzeigen/ausblenden, Geschwindigkeit, etc.)
 [ ] Keyboard Capslock und numlock (inkl. leds)

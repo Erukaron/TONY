@@ -1,0 +1,12 @@
+mov al, 0x55
+mov ah, 0xaa
+mov ax, 0xaa00
+mov bl, 0xaa
+mov bh, 0x55
+mov bx, 0x00aa
+mov cl, [0x55aa]
+mov ch, [0xaa55]
+mov cx, [si]
+mov dx, ax
+mov dh, ah
+mov dl, al

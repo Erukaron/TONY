@@ -231,6 +231,8 @@ kernel_setup:
     .warn_no_gfx_mode db "GFX mode not enabled!", ASCII_CR, ASCII_LF, 0
     .after_gfx_mode:
 
+    call test_code
+
     ; check if shell exists
     mov si, shell_file
     int 0xc1
@@ -290,8 +292,6 @@ kernel_setup:
     .error_no_shell_file db "Shell does not exist!", ASCII_CR, ASCII_LF, 0
     .empty_shell_cmd db 0
     .after_shell:
-    
-    call test_code
 
     ; set default video mode and start mlt
     call display_restore_default_kernel_video_mode
@@ -306,7 +306,18 @@ kernel_setup:
         push cs
         pop ds
         mov si, test_file
-        ;int 0xc2
+        xchg bx, bx
+        int 0xc2
+
+        xchg bx, bx
+
+        ; Edit.com wird überschrieben -> vbindiff orig und neu
+        ; -> Check start cluster
+
+        mov dl, 15
+        int 0xc6
+
+        xchg bx, bx
 
         ret
 
@@ -426,6 +437,8 @@ install_display:
     mov al, 0x9b
     mov bx, display_double_buffer_ctrl
     call kernel_install_interrupt
+
+    int 0x95 ; CLS
 
     mov si, .wait_msg
     int 0x91

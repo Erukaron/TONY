@@ -54,6 +54,18 @@ FAT_RD_CLUSTER_OFFSET       equ 0x1a
 FAT_RD_SIZE_OFFSET          equ 0x1c
 
 
+; File handle:
+; 0x00 (11 Bytes) File name in fat format
+; 0x0b (2 Bytes) Current cursor position in file (current sector)
+; 0x0d (2 Bytes) Current cursor position in file (current byte in sector)
+; 0x0f (2 Bytes) Current file size in clusters (updated on each write -> FAT clusters)
+; 0x11 (2 Bytes) Segment of loaded file (where in memory is the file located?)
+; 0x13 (2 Bytes) Offset of loaded file (where in memory is the file located?)
+; 0x15 (4 Bytes) Current file size in bytes (updated each write -> bytes of raw data on the drive)
+; 0x19 (1 Bytes) File flags 
+;                Bit 0: 0 -> File already exists
+;                       1 -> File created upon open command
+; 0x1a (6 Bytes) Unused
 FAT_FILE_HANDLE_OFFSET_CURSOR               equ 0x0b
 FAT_FILE_HANDLE_OFFSET_FILE_SIZE_CLUSTER    equ 0x0f
 FAT_FILE_HANDLE_OFFSET_SEGMENT              equ 0x11
@@ -284,7 +296,6 @@ fat_load_file_allocation_table:
 fat_load:
     sti ; Allow hardware interrupts to occur while processing software interrupts
 
-    pushf
     pusha
     push ds
     push es
@@ -342,7 +353,20 @@ fat_load:
     pop es
     pop ds
     popa
-    popf
+    push ax
+    push bp
+        ; Adjust carry
+        mov bp, sp
+        mov ax, [ss:bp + 8]
+        jnc .clc
+            or ax, 1
+            jmp .carry_done
+        .clc:
+            and ax, 0xfffe
+        .carry_done:
+        mov [ss:bp + 8], ax
+    pop bp
+    pop ax
     iret
 ;-------------------------------------------------------------------------------
 
@@ -633,7 +657,7 @@ calculate_next_cluster:
 ; Searches for a filename in the Rootdirectory 
 ;
 ; input: 
-;   ds:si -> Filename
+;   ds:si -> Filename in fat format
 ;
 ; output:
 ;   ax -> File index in directory table (-1 if error)
@@ -927,19 +951,6 @@ fat_get_file_size:
 ;
 ; output:
 ;   bp:bx -> Address of file handle (bp=-1 if not enough memory)
-;-------------------------------------------------------------------------------
-; File handle:
-; 0x00 (11 Bytes) File name in fat format
-; 0x0b (2 Bytes) Current cursor position in file (current sector)
-; 0x0d (2 Bytes) Current cursor position in file (current byte in sector)
-; 0x0f (2 Bytes) Current file size in clusters (updated on each write -> FAT clusters)
-; 0x11 (2 Bytes) Segment of loaded file (where in memory is the file located?)
-; 0x13 (2 Bytes) Offset of loaded file (where in memory is the file located?)
-; 0x15 (4 Bytes) Current file size in bytes (updated each write -> bytes of raw data on the drive)
-; 0x19 (1 Bytes) File flags 
-;                Bit 0: 0 -> File already exists
-;                       1 -> File created upon open command
-; 0x1a (6 Bytes) Unused
 ;-------------------------------------------------------------------------------
 fat_open:
     sti ; Allow hardware interrupts to occur while processing software interrupts
@@ -1577,6 +1588,8 @@ fat_read_next_string:
 ; output:
 ;   dl -> Error code
 ;       0x00: no error
+;       0x01: write error
+;       0x02: file not found
 ;-------------------------------------------------------------------------------
 fat_write_next_byte:
     ; Writing process:
@@ -1587,21 +1600,145 @@ fat_write_next_byte:
     ;       1b.2) Check fat for enough space (exit if not)
     ;       1b.3) Get first free cluster in fat
     ;       1b.4) Write file information from file handle to root directory (name and flags)
-    ; 2) Current file pointer at sector bound
+    ; 2) Current file pointer 0?
     ;   2a) yes: 
-    ;       2a.1) Check if enough space (exit if not)
+    ;       2a.1) Check if enough space for new sector (exit if not)
     ;       2a.2) Zero size of one sector in memory
     ;       2a.3) Link new cluster to old cluster in fat
     ;       2a.4) Terminate file in fat
     ;       2a.5) Write fat
-    ;   2b) no: Read sector including current byte position into memory
+    ;   2b) no: do nothing -> sector already loaded to offset in handler ----- NOT Read sector including current byte position into memory
     ; 3) Add dl to file pointer in memory
     ; 4) Increase file size in file handle
     ; 5) Write sector in memory to disk
     ; 6) Write file information from file handle to root directory (size)
+    ; 7) Current file pointer over sector boundary
+    ;   7a) yes -> Increase sector, reset offset
+    ;   7b) no: Increase offset
 
     sti ; Allow hardware interrupts to occur while processing software interrupts
-    call fat_disable_motor
+
+    push es
+    push ds
+    push di
+    push si
+
+    mov byte [cs:.byte_to_write], dl
+    mov ds, bp
+
+    call fat_load_directory
+
+    ; 2)
+    cmp word [ds:bx + FAT_FILE_HANDLE_OFFSET_CURSOR + 2], 0
+    jnz .byte_to_data_puffer
+
+    ; 2a)
+
+
+
+
+
+
+    ; 3)
+    .byte_to_data_puffer:
+    push word [ds:bx + FAT_FILE_HANDLE_OFFSET_SEGMENT]
+    pop es
+    push word [ds:bx + FAT_FILE_HANDLE_OFFSET_OFFSET]
+    pop di
+    add di, word [ds:bx + FAT_FILE_HANDLE_OFFSET_CURSOR + 2] ; offset into current sector
+    mov dl, [cs:.byte_to_write]
+    mov [es:di], dl
+
+    ; 4)
+    mov ax, [ds:bx + FAT_FILE_HANDLE_OFFSET_FILE_SIZE_BYTES]
+    and ax, 0b0000000111111111 ; Check if lowest 9 bits are set -> 511
+    cmp ax, 0b0000000111111111
+    jnz .skip_increase_cluster
+    inc word [ds:bx + FAT_FILE_HANDLE_OFFSET_FILE_SIZE_CLUSTER]
+    .skip_increase_cluster:
+    inc word [ds:bx + FAT_FILE_HANDLE_OFFSET_FILE_SIZE_BYTES]
+
+    ; 5)
+    ; ax is cluster of file -> Start cluster from root dir -> file segment = times to get next cluster
+    ; Last cluster got is the cluster number for ax
+    push cx
+    push es
+    push di
+    push ds
+    push dx
+        mov cx, [ds:bx + FAT_FILE_HANDLE_OFFSET_CURSOR] ; Sector number the file pointer points to
+
+        ; Filename in FAT format is first entry of file handle
+        mov si, bx 
+        call fat_search_file ; es:di: first byte of file entry in root dir
+
+        cmp ax, -1
+        jz .error_file_not_found
+
+        mov ax, [es:di + FAT_RD_CLUSTER_OFFSET]; Starting cluster of file
+        mov dx, ax
+        .search_next_cluster:
+            cmp cx, 0
+            jz .cluster_found
+            call calculate_next_cluster ; returns next cluter in dx
+            mov ax, dx
+            jmp .search_next_cluster
+        .cluster_found:
+        int 0xe1 ; cluster to lba
+        mov ax, dx
+        add ax, [cs:fat_load_data_offset] ; offset
+    pop dx
+    pop ds
+    pop di
+    pop es
+    pop cx
+
+    mov dl, [cs:bootdrive]
+    push word [ds:bx + FAT_FILE_HANDLE_OFFSET_SEGMENT] ; buffer segment
+    pop es
+    mov bx, [ds:bx + FAT_FILE_HANDLE_OFFSET_OFFSET] ; buffer offset
+    ;mov ax, ax ; Cluster number
+    mov cx, 1 ; no of sectors
+    call fat_write_device
+    jc .error_write
+
+    ; 6)
+
+
+
+
+
+
+    ; 7)
+
+
+
+
+
+
+    .done:
+        mov dl, 0
+        jmp .return
+
+    .error_write:
+        or dl, 1
+        jmp .return
+
+    .error_file_not_found:
+        or dl, 2
+        jmp .return
+
+    .return:
+        call fat_disable_motor
+
+        pop si
+        pop di
+        pop ds
+        pop es
+
+        xor dh, dh
+
+        iret
 
     xchg bx, bx
     push cs
@@ -1614,6 +1751,8 @@ fat_write_next_byte:
     nop
     jmp .hang
     iret
+
+    .byte_to_write db 0
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------

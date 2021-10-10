@@ -128,6 +128,8 @@ mlt_start:
         ;   P -> Enable direct mode
         ;       -> write bytes in hex form (prefix/suffix is ommited) directly and without space to S:O
         ;       -> To quit direct mode enter q
+        ;   A -> Start assembler mode on address S:O
+        ;       -> Ti quit enter q
         ; B -> Bytes
 
         ; split segment and offset
@@ -197,6 +199,19 @@ mlt_start:
             jmp .no_read
         .no_direct:
 
+        mov ah, 0b10 ; string contains substring, ignore case
+        ; ds:si correct
+        mov di, .mlt_mode_assembler_id
+        int 0xd2
+        jc .no_assembler
+            mov byte [cs:.mlt_selected_mode], .MLT_MODE_ASSEMBLER
+            mov dl, [cs:.mlt_mode_assembler_id]
+            mov dh, 0 ; remove identification from string
+            mov cx, 1 ;     terminate on first occurence of string
+            int 0xd6 ; replace char
+            jmp .no_read
+        .no_assembler:
+
         cmp byte [cs:.mlt_selected_mode], 0
         jnz .no_read
             mov byte [cs:.mlt_selected_mode], .MLT_MODE_READ
@@ -209,6 +224,8 @@ mlt_start:
         ; Jump according to mode and proceed with operation
         cmp byte [cs:.mlt_selected_mode], .MLT_MODE_READ
         jz .read
+        cmp byte [cs:.mlt_selected_mode], .MLT_MODE_ASSEMBLER
+        jz .assembler
         cmp byte [cs:.mlt_selected_mode], .MLT_MODE_DIRECT
         jz .direct
         cmp byte [cs:.mlt_selected_mode], .MLT_MODE_WRITE
@@ -527,6 +544,16 @@ mlt_start:
             pop es
             jmp .loop
 
+    .assembler:
+        pusha
+        push ds
+        push es
+            call mlt_assembler
+        pop es
+        pop ds
+        popa
+        jmp .loop
+
     .run:
         pusha
         pushf
@@ -580,9 +607,15 @@ mlt_start:
     .MLT_MODE_WRITE     equ 2
     .MLT_MODE_DIRECT    equ 4
     .MLT_MODE_RUN       equ 8
+    .MLT_MODE_ASSEMBLER equ 16
     .mlt_mode_run_id db 'R', 0
     .mlt_mode_write_id db 'W', 0
     .mlt_mode_direct_id db 'P', 0
+    .mlt_mode_assembler_id db 'A', 0
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+%include "MLTASSEM.INC"
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------

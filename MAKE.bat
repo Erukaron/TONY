@@ -26,6 +26,7 @@ if "%1" == "keyboard" (
 						FAT_RootDir_Creator.exe -start-font-editor-3x5
 					) else (
 						if "%1" == "all" (
+							call BUILD_COMS.BAT
 							call MAKE_IMG.BAT %2
 							REM Add cd iso
 						) else (
