@@ -643,6 +643,10 @@ fo_fake_line_entry:
 
         mov al, [ds:si]
         int 0x90 ; display character
+
+        xor ah, ah
+        int 0x9b ; Flip buffer
+
         inc si
     pop ax
 
@@ -1447,6 +1451,9 @@ fo_putch:
         xor ax, ax
         mov al, [cs:.delay]
         int 0x81 ; sleep ax milli seconds (second half)
+
+        ; Flip buffer
+        int 0x9b
     pop ax
 
     ret

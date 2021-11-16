@@ -90,7 +90,7 @@ enable_hacking_game       db FALSE
 fo_mode_match_ident      db "-match", 0
 fo_mode_keystroke_ident  db "-keystroke", 0
 fo_mode_auto_ident       db "-auto", 0
-fo_mode                  db 0 ; (0 = match, 1 = keystroke, 2 = auto)
+fo_mode                  db 1 ; (0 = match, 1 = keystroke, 2 = auto)
 
 fo_level_ident           db "-lv=", 0
 fo_pw_level              db 0 ; 0 - 4 ; 5 characters, 8 characters, 10 characters, 12 characters, 15 characters
@@ -111,6 +111,7 @@ cmd_echo_ident           db "echo", 0
 cmd_pause_ident          db "pause", 0
 cmd_delay_ident          db "delay", 0
 cmd_at_echo_ident        db "@echo", 0
+cmd_fallout_ident        db "fallout", 0
 
 cmd_color_ident          db "color", 0
 cmd_path_ident           db "path", 0
@@ -521,6 +522,10 @@ try_exec_cmd:
     mov di, cmd_at_echo_ident
     int 0xd2 ; check if string contains substring
     jnc at_echo
+
+    mov di, cmd_fallout_ident
+    int 0xd2
+    jnc call_fallout_hacking_game ; check if string contains substring
 
     jmp .cmd_non_existant
 
@@ -960,6 +965,14 @@ at_echo:
     .turn_off:
         mov byte [cs:echo_on], FALSE
         ret
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Executes the fallout hacking game
+;-------------------------------------------------------------------------------
+call_fallout_hacking_game:
+    call fallout_hacking_game
+    ret
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------

@@ -296,6 +296,8 @@ assemble:
     .assembly_error db 0
 
     ; Symbol list
-    .sym_push db .push, 'push', 0
-    .sym_pop db .pop, 'pop', 0
+    .sym_push dw .push
+              db 'push', 0
+    .sym_pop dw .pop 
+             db 'pop', 0
 ;-------------------------------------------------------------------------------

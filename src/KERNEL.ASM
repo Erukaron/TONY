@@ -47,6 +47,7 @@ PIC_EOI_MASK        equ 0x20
 bootdrive db 0
 time dw 0
 kernel_config_file db "KERNEL.CFG", 0
+gfx_on_startup db 1
 ;-------------------------------------------------------------------------------
 ; !!! Vars need to have FAT_INPUT_LENGTH + zero terminator size
 ;-------------------------------------------------------------------------------
@@ -174,7 +175,7 @@ kernel_setup:
         .no_update_keymap:
     pop es
 
-    ; check if gfx mode should be enabled
+    ; check if gfx mode should be enabled -> font is NOT initialized, switching to video mode is NOT possible later on -> safe start
     mov ah, FUNC_KEY_F8
     int 0xb2
     cmp al, 0x01
@@ -193,6 +194,9 @@ kernel_setup:
         call display_update_font
         call crlf
 
+        ; Check if gfx mode should be enabled -> font is initialized, switching to video mode is possible later on
+        cmp byte [cs:gfx_on_startup], FALSE
+        jz .skip_gfx_mode
         ; Now that we have a font file, switch to gfx mode
         mov al, VIDEOMODE_GFX_320_200_COLOR ; gfx mode
         int 0x93 ; Switch video mode
@@ -945,6 +949,15 @@ process_config_file:
         int 0xd2
         jnc .set_gfx_color ; set var, if equal
 
+        ; no gfx mode 
+        mov ah, 11b ; Check if equal, caseinsensitive
+        ; ds:si already set
+        push cs
+        pop es
+        mov di, .config_no_gfx_ident
+        int 0xd2
+        jnc .no_gfx ; no gfx on startup
+
         jmp .error_no_directive
 
         .skip_entry: 
@@ -1127,6 +1140,11 @@ process_config_file:
 
         jmp .loop
 
+    .no_gfx:
+        mov byte [cs:gfx_on_startup], FALSE
+
+        jmp .loop
+
     ; Print an info with the current directive in ds:si
     .info_current_directive:
         mov al, 0 ; Info
@@ -1187,6 +1205,7 @@ process_config_file:
     .config_shell_cmd_ident db "SHELL_PARAMS", 0
     .config_font_ident db "FONT", 0
     .config_gfx_color_ident db "GFX_COLOR", 0
+    .config_no_gfx_ident db "NO_GFX", 0
     .warn_not_found_default db " not found! Using default instead.", ASCII_CR, ASCII_LF, 0
     .warn_directive_contains_errors db "Configuration directive caused an error!", ASCII_CR, ASCII_LF, 0
     .warn_directive_not_recognized db "Configuration directive not recognized!", ASCII_CR, ASCII_LF, 0
