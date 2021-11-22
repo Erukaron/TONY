@@ -85,9 +85,10 @@ VIDEOMODE_GFX_320_200_COLOR equ 0b1000010
 ;-------------------------------------------------------------------------------
 ; Miscellanious
 ;-------------------------------------------------------------------------------
-FALSE equ 0
-TRUE  equ 1
-EOF   equ 1
+FALSE                       equ 0
+TRUE                        equ 1
+EOF                         equ 1
+FAT_INPUT_LENGTH            equ 12
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
@@ -106,6 +107,18 @@ PSP_LENGTH                  equ 0x100
 PSP_CMD_LINE_OFFSET         equ 0x81
 PSP_CMD_LINE_MAX_LENGTH     equ 0x7e ; (0xff - 0x81)
 PSP_CMD_LINE_LENGTH_OFFSET  equ 0x80
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Event Modifiers
+;-------------------------------------------------------------------------------
+MODIFIER_SHIFT              equ 1
+MODIFIER_CTRL               equ 2
+MODIFIER_ALT                equ 4
+MODIFIER_CTRL_SHIFT         equ MODIFIER_SHIFT + MODIFIER_CTRL
+MODIFIER_CTRL_ALT           equ MODIFIER_CTRL  + MODIFIER_ALT
+MODIFIER_ALT_SHIFT          equ MODIFIER_SHIFT + MODIFIER_ALT
+MODIFIER_CTRL_ALT_SHIFT     equ MODIFIER_CTRL  + MODIFIER_ALT + MODIFIER_SHIFT
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------

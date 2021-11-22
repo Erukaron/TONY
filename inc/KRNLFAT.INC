@@ -29,7 +29,6 @@
 ;-------------------------------------------------------------------------------
 ; Constants
 ;-------------------------------------------------------------------------------
-FAT_INPUT_LENGTH            equ 12
 FAT_EXTENSION_FAT_LENGTH    equ 3
 FAT_IDENT_LENGTH            equ 11
 FAT_FILETYPE_SEPERATOR      equ '.'
@@ -1615,6 +1614,8 @@ fat_write_next_byte:
     ; 7) Current file pointer over sector boundary
     ;   7a) yes -> Increase sector, reset offset
     ;   7b) no: Increase offset
+
+    xchg bx, bx
 
     sti ; Allow hardware interrupts to occur while processing software interrupts
 

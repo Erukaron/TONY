@@ -65,10 +65,16 @@ down_handler_segment    dw 0
 down_handler_offset     dw 0
 up_handler_segment      dw 0
 up_handler_offset       dw 0
+save_as_handler_segment dw 0
+save_as_handler_offset  dw 0
+save_handler_segment    dw 0
+save_handler_offset     dw 0
 
 init_finished           db FALSE
 video_mode              db 0
 cursor_symbol           db '_'
+
+filename times FAT_INPUT_LENGTH + 1 db 0
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
@@ -118,6 +124,7 @@ MAIN:
     cmp byte [cs:argc], 0
     jz .skip_load_file
         mov si, argv
+        call argv_to_filename
         call load_file_si_to_buffer
     .skip_load_file:
 
@@ -134,6 +141,30 @@ deallocate_memory:
 
 ctrl_to_caller:
     ret
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Saves the filename to a variable for later
+;-------------------------------------------------------------------------------
+argv_to_filename:
+    push es
+    push si
+    push di
+    push cx
+        xchg bx, bx
+        push cs
+        pop es
+        mov di, filename
+        mov cx, FAT_INPUT_LENGTH
+        cld
+        rep movsb
+    pop cx
+    pop di
+    pop si
+    pop es
+
+    .done:
+        ret
 ;-------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
@@ -194,7 +225,7 @@ register_events:
     mov [cs:escape_handler_offset], dx
 
     ; Ctrl + e -> Exit
-    mov ah, 0b10 ; Ctrl modifier
+    mov ah, MODIFIER_CTRL
     mov al, 0x80 ; on key release
     or al, SCAN_CODE_E
     mov bx, cs
@@ -239,6 +270,24 @@ register_events:
     mov [cs:up_handler_segment], bx
     mov [cs:up_handler_offset], dx
 
+    ; Ctrl + Shift + s -> Save As
+    mov ah, MODIFIER_CTRL_SHIFT
+    mov al, SCAN_CODE_S
+    mov bx, cs
+    mov dx, handle_save_as
+    int 0xb3
+    mov [cs:save_as_handler_segment], bx
+    mov [cs:save_as_handler_offset], dx
+
+    ; Ctrl + s -> Save
+    mov ah, MODIFIER_CTRL
+    mov al, SCAN_CODE_S
+    mov bx, cs
+    mov dx, handle_save
+    int 0xb3
+    mov [cs:save_handler_segment], bx
+    mov [cs:save_handler_offset], dx
+
     ret
 ;-------------------------------------------------------------------------------
 
@@ -278,6 +327,18 @@ deregister_events:
     mov ah, 0x80
     mov bx, [cs:up_handler_segment]
     mov dx, [cs:up_handler_offset]
+    int 0xb3
+
+    ; Save as
+    mov ah, 0x80
+    mov bx, [cs:save_as_handler_segment]
+    mov dx, [cs:save_as_handler_offset]
+    int 0xb3
+
+    ; Save
+    mov ah, 0x80
+    mov bx, [cs:save_handler_segment]
+    mov dx, [cs:save_handler_offset]
     int 0xb3
 
     ret
@@ -348,6 +409,26 @@ handle_exit:
 
     jmp deallocate_memory ; leave program
 
+    .done:
+        retf
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Handle the save as procedure
+;-------------------------------------------------------------------------------
+handle_save_as:
+    xchg bx, bx
+    ; ToDo: get filename from user
+    .done:
+        retf
+;-------------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------------
+; Handle the save procedure
+;-------------------------------------------------------------------------------
+handle_save:
+    xchg bx, bx
+    ; ToDo: Write file from filename
     .done:
         retf
 ;-------------------------------------------------------------------------------
