@@ -34,24 +34,24 @@ if not exist tools\FAT_RootDir_Creator.exe (
 )
 
 echo Creating directories
-mkdir bin
-mkdir build
-mkdir output
-mkdir tmpfiles
-mkdir tmpfiles\txt
-mkdir tmpfiles\bin
-mkdir tmpfiles_sys_flag
-mkdir tmpfiles_sys_flag\txt
-mkdir tmpfiles_sys_flag\bin
+mkdir bin >nul
+mkdir build >nul
+mkdir output >nul
+mkdir tmpfiles >nul
+mkdir tmpfiles\txt >nul
+mkdir tmpfiles\bin >nul
+mkdir tmpfiles_sys_flag >nul
+mkdir tmpfiles_sys_flag\txt >nul
+mkdir tmpfiles_sys_flag\bin >nul
 echo.
 
 echo Creating working copies
 :: ASM
-copy src\*.* build\ /Y
-copy inc\*.* build\ /Y
+copy src\*.* build\ /Y >nul
+copy inc\*.* build\ /Y >nul
 :: C
-copy tools\smlrc.exe build\ /Y
-echo.
+copy tools\smlrc.exe build\ /Y >nul
+::echo.
 
 :: Nasm needs to load the include files from the current directory, so switch to build dir
 cd build
@@ -111,26 +111,26 @@ echo.
 
 :: Copy text files
 echo Create working copies of static files
-copy files\*.CFG tmpfiles\txt /Y
-copy files\*.TXT tmpfiles\txt /Y
-copy files\*.BAT tmpfiles\txt /Y
-copy README.MD tmpfiles\txt /Y
+copy files\*.CFG tmpfiles\txt /Y >nul
+copy files\*.TXT tmpfiles\txt /Y >nul
+copy files\*.BAT tmpfiles\txt /Y >nul
+copy README.MD tmpfiles\txt /Y >nul
 
 :: Copy binary files
-copy files\*.MAP tmpfiles\bin /Y
-copy files\*.BIN tmpfiles\bin /Y
-copy files\*.COM tmpfiles\bin /Y
+copy files\*.MAP tmpfiles\bin /Y >nul
+copy files\*.BIN tmpfiles\bin /Y >nul
+copy files\*.COM tmpfiles\bin /Y >nul
 echo.
 
 :: Copy system files (text)
-copy files\SYS_FLAG\*.CFG tmpfiles_sys_flag\txt /Y
+copy files\SYS_FLAG\*.CFG tmpfiles_sys_flag\txt /Y >nul
 ::copy files\SYS_FLAG\*.TXT tmpfiles_sys_flag\txt /Y
 ::copy files\SYS_FLAG\*.BAT tmpfiles_sys_flag\txt /Y
 
 :: Copy system files (bin)
-copy files\SYS_FLAG\*.MAP tmpfiles_sys_flag\bin /Y
-copy files\SYS_FLAG\*.BIN tmpfiles_sys_flag\bin /Y
-copy files\SYS_FLAG\*.COM tmpfiles_sys_flag\bin /Y
+copy files\SYS_FLAG\*.MAP tmpfiles_sys_flag\bin /Y >nul
+copy files\SYS_FLAG\*.BIN tmpfiles_sys_flag\bin /Y >nul
+copy files\SYS_FLAG\*.COM tmpfiles_sys_flag\bin /Y >nul
 echo.
 
 :: Add txt files to root dir
@@ -197,50 +197,55 @@ echo.
 
 :: Adjust file sizes AFTER the root dir was built
 :: Adjust filesize for binary files -> They need to be terminated at a multiple of 512 to be loaded correctly
+echo Adjusting file sizes for binaries...
 for %%f in (bin\*.*) do (
-	echo Adjusting file size for binary: %%f
-	tools\FAT_RootDir_Creator.exe -fill next -fill-byte 0 -i "%%f"
+	echo Adjusting file size for binary: %%f >nul
+	tools\FAT_RootDir_Creator.exe -fill next -fill-byte 0 -i "%%f" >nul
 )
-echo.
+::echo.
 
 :: Adjust filesize for text files -> They need to be terminated at a multiple of 512 to be loaded correctly
+echo Adjusting file sizes for static files...
 for %%f in (tmpfiles\txt\*.*) do (
-	echo Adjusting file size for static file: %%f
-	tools\FAT_RootDir_Creator.exe -fill next -fill-byte 32 -fill-last-byte 0 -i "%%f"
+	echo Adjusting file size for static file: %%f >nul
+	tools\FAT_RootDir_Creator.exe -fill next -fill-byte 32 -fill-last-byte 0 -i "%%f" >nul
 )
+echo Adjusting file sizes for static system files...
 for %%f in (tmpfiles_sys_flag\txt\*.*) do (
-	echo Adjusting file size for static system file: %%f
-	tools\FAT_RootDir_Creator.exe -fill next -fill-byte 32 -fill-last-byte 0 -i "%%f"
+	echo Adjusting file size for static system file: %%f >nul
+	tools\FAT_RootDir_Creator.exe -fill next -fill-byte 32 -fill-last-byte 0 -i "%%f" >nul
 )
 
 :: Adjust filesize for binary files -> They need to be terminated at a multiple of 512 to be loaded correctly
+echo Adjusting file sizes for binaries...
 for %%f in (tmpfiles\bin\*.*) do (
-	echo Adjusting file size for static file: %%f
-	tools\FAT_RootDir_Creator.exe -fill next -fill-byte 0 -i "%%f"
+	echo Adjusting file size for static file: %%f >nul
+	tools\FAT_RootDir_Creator.exe -fill next -fill-byte 0 -i "%%f" >nul
 )
+echo Adjusting file sizes for system binaries...
 for %%f in (tmpfiles_sys_flag\bin\*.*) do (
-	echo Adjusting file size for static system file: %%f
-	tools\FAT_RootDir_Creator.exe -fill next -fill-byte 0 -i "%%f"
+	echo Adjusting file size for static system file: %%f >nul
+	tools\FAT_RootDir_Creator.exe -fill next -fill-byte 0 -i "%%f" >nul
 )
 echo.
 
 echo Moving adjusted static files to bin directory
-copy tmpfiles\txt\*.* bin
-copy tmpfiles\bin\*.* bin
-copy tmpfiles_sys_flag\txt\*.* bin
-copy tmpfiles_sys_flag\bin\*.* bin
+copy tmpfiles\txt\*.* bin >nul
+copy tmpfiles\bin\*.* bin >nul
+copy tmpfiles_sys_flag\txt\*.* bin >nul
+copy tmpfiles_sys_flag\bin\*.* bin >nul
 echo.
 
 echo Building image
-copy /b !copyArgs! "output\TONY.IMG"
-echo.
+copy /b !copyArgs! "output\TONY.IMG" >nul
+::echo.
 
 :: Wait a little bit, so that the adjustment works
 ::ping localhost -n 1 > nul
 
 if !fillImage!==true (
 	echo Adjusting file size of image
-	tools\FAT_RootDir_Creator.exe -i "output\TONY.IMG" -fill 1474560
+	tools\FAT_RootDir_Creator.exe -i "output\TONY.IMG" -fill 1474560 >nul
 	if not exist "output\TONY.IMG" goto THROW_ERROR
 	echo.
 )

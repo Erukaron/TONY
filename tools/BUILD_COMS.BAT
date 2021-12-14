@@ -21,39 +21,39 @@ if exist bin\ set removeBin=false
 if exist build\ set removeBuild=false
 
 echo Creating directories
-mkdir bin\COM
-mkdir bin\COM\SYS_FLAG
-mkdir build\COM
-mkdir build\COM\SYS_FLAG
-echo.
+mkdir bin\COM >nul
+mkdir bin\COM\SYS_FLAG >nul
+mkdir build\COM >nul
+mkdir build\COM\SYS_FLAG >nul
+::echo.
 
 echo Creating working copies
 :: For ASM files
-copy src\COM\*.asm build\COM /Y
-copy src\COM\SYS_FLAG\*.asm build\COM\SYS_FLAG /Y
-copy inc\*.INC build\COM /Y
-copy inc\*.INC build\COM\SYS_FLAG /Y
+copy src\COM\*.asm build\COM /Y >nul
+copy src\COM\SYS_FLAG\*.asm build\COM\SYS_FLAG /Y >nul
+copy inc\*.INC build\COM /Y >nul
+copy inc\*.INC build\COM\SYS_FLAG /Y >nul
 :: For C files
-copy tools\smlrc.exe build\COM /Y
-copy tools\smlrc.exe build\COM\SYS_FLAG /Y
-copy src\COM\*.c build\COM /Y
-copy src\COM\SYS_FLAG\*.c build\COM\SYS_FLAG /Y
-copy src\COM\*.h build\COM /Y
-copy src\COM\SYS_FLAG\*.h build\COM\SYS_FLAG /Y
-copy inc\*.h build\COM /Y
-copy inc\*.h build\COM\SYS_FLAG /Y
+copy tools\smlrc.exe build\COM /Y >nul
+copy tools\smlrc.exe build\COM\SYS_FLAG /Y >nul
+copy src\COM\*.c build\COM /Y >nul
+copy src\COM\SYS_FLAG\*.c build\COM\SYS_FLAG /Y >nul
+copy src\COM\*.h build\COM /Y >nul
+copy src\COM\SYS_FLAG\*.h build\COM\SYS_FLAG /Y >nul
+copy inc\*.h build\COM /Y >nul
+copy inc\*.h build\COM\SYS_FLAG /Y >nul
 echo.
 
 :: Nasm needs to load the include files from the current directory, so switch to build dir
 cd build\COM
-
+echo Programs
 :: Compile c files
 for %%f in (*.c) do (
     echo Compile file: %%f
     smlrc -seg16 %%f %%~nf.ASM
     if not exist %%~nf.ASM goto THROW_ERROR
 )
-echo.
+::echo.
 
 :: Assemble
 for %%f in (*.ASM) do (
@@ -65,12 +65,13 @@ echo.
 
 :: Now the same for system files
 cd SYS_FLAG
+echo System files
 for %%f in (*.c) do (
     echo Compile file: %%f
     smlrc -seg16 %%f %%~nf.ASM
     if not exist %%~nf.ASM goto THROW_ERROR
 )
-echo.
+::echo.
 
 for %%f in (*.ASM) do (
     echo Assemble system file: %%f
@@ -83,9 +84,9 @@ cd ..
 :: Go back to home dir
 cd ..\..
 
-copy bin\COM\*.COM files
-copy bin\COM\SYS_FLAG\*.COM files\SYS_FLAG
-echo.
+copy bin\COM\*.COM files >nul
+copy bin\COM\SYS_FLAG\*.COM files\SYS_FLAG >nul
+::echo.
 
 :: Wait a little bit, so that the delete does not fail
 ::ping localhost -n 2 > nul

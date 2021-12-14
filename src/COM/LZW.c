@@ -25,8 +25,6 @@
 #include "stdio.h"
 #include "LZW.h"
 
-void main(char argc, char *argv);
-
 void main(char argc, char *argv)
 {
     dbg

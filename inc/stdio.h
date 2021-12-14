@@ -35,19 +35,6 @@
 typedef char byte;
 typedef short word;
 typedef char* string;
-typedef struct 
-{
-    short segment;
-    short offset;
-    unsigned short size;
-} reserved_memory;
-asm(
-    "struc reserved_memory\n"
-    "   .segment resw 1\n"
-    "   .offset  resw 1\n"
-    "   .size    resw 1\n"
-    "endstruc\n"
-    );
 //-------------------------------------------------------------------------------
 
 //-------------------------------------------------------------------------------
@@ -69,11 +56,6 @@ char getch_no_putch();
 // int 0xb1
 void readln(unsigned int length, char *buffer);
 void readln_pw(unsigned int length, char *buffer, char obfuscator);
-
-// int 0xb8
-void malloc(unsigned short size, reserved_memory *result);
-// int 0xb9
-void dealloc(reserved_memory *allocated);
 //-------------------------------------------------------------------------------
 
 //-------------------------------------------------------------------------------
@@ -203,30 +185,6 @@ void readln_pw(unsigned int length, char *buffer, char obfuscator)
     asm("mov di, [ss:bp+6]");
     asm("int 0xb1");
     */
-}
-
-void malloc(unsigned short size, reserved_memory *allocated)
-{
-    asm(
-        "mov ax, [ss:bp+4]\n"
-        "int 0xb8\n"
-        "mov cx, bx\n"
-        "mov bx, [ss:bp+6] ; reserved_memory pointer\n"
-        "mov [ss:bx + reserved_memory.segment], cx\n"
-        "mov [ss:bx + reserved_memory.offset], dx\n"
-        "mov [ss:bx + reserved_memory.size], ax\n"
-        );
-}
-
-void dealloc(reserved_memory *allocated)
-{
-    asm(
-        "mov bx, [ss:bp+4]\n"
-        "mov ax, [ss:bx + reserved_memory.size]\n"
-        "mov dx, [ss:bx + reserved_memory.offset]\n"
-        "mov bx, [ss:bx + reserved_memory.segment]\n"
-        "int 0x9b\n"
-        );
 }
 //-------------------------------------------------------------------------------
 

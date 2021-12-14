@@ -21,66 +21,75 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 //-------------------------------------------------------------------------------
-#include "COM_HEAD.h"
-#include "stdio.h"
-#include "LOGIN.H"
-//-------------------------------------------------------------------------------
-
-/*
- * Filedescription USERCATA.LOG:
- *
- * (1 Byte 0 .. 1)
- * First nibble is priority level (0 is highest, f is lowest)
- * Second nibble is user number (0..f)
- *
- * (12 Bytes 1 .. 13)
- * Username in ascii format
- *
- * (32 Bytes 14 .. 46)
- * Password SHA3-256 encoded
- */
 
 //-------------------------------------------------------------------------------
-// Constants
+// Standard library
 //-------------------------------------------------------------------------------
-const string USERNAME_PROMPT = "login: ";
-const string PASSWORD_PROMPT = "password: ";
-#define USERNAME_LENGTH 12
-#define PASSWORD_LENGTH 32
+#ifndef __STDLIB_H_INCLUDED
+#define __STDLIB_H_INCLUDED
+//-------------------------------------------------------------------------------
+
+//-------------------------------------------------------------------------------
+// Typedefs
+//-------------------------------------------------------------------------------
+typedef struct 
+{
+    short segment;
+    short offset;
+    unsigned short size;
+} reserved_memory;
+asm(
+    "struc reserved_memory\n"
+    "   .segment resw 1\n"
+    "   .offset  resw 1\n"
+    "   .size    resw 1\n"
+    "endstruc\n"
+    );
 //-------------------------------------------------------------------------------
 
 //-------------------------------------------------------------------------------
 // Prototypes
 //-------------------------------------------------------------------------------
-string sha3_256(string data);
-//-------------------------------------------------------------------------------
-
-//-------------------------------------------------------------------------------
-// Variables
-//-------------------------------------------------------------------------------
-char EnteredUsername[USERNAME_LENGTH] = {0};
-char EnteredPassword[PASSWORD_LENGTH] = {0};
+// int 0xb8
+void malloc(unsigned short size, reserved_memory *result);
+// int 0xb9
+void free(reserved_memory *allocated);
 //-------------------------------------------------------------------------------
 
 //-------------------------------------------------------------------------------
 // Functions
+// Local variables:
+//      [ss:bp-2] is first local variable
+//      [ss:bp-4] is second local variable...
+// Parameters:
+//      [ss:bp+4] is first parameter
+//      [ss:bp+6] is second parameter...
 //-------------------------------------------------------------------------------
-void main(char argc, char *argv)
+void malloc(unsigned short size, reserved_memory *allocated)
 {
-    printf(USERNAME_PROMPT);
-    readln(USERNAME_LENGTH, &EnteredUsername);
-    printf(EnteredUsername);
-    printf(PASSWORD_PROMPT);
-    readln_pw(PASSWORD_LENGTH, &EnteredPassword, '*');
-    printf(EnteredPassword);
-
-    //EnteredPassword = sha3_256(EnteredPassword);
-
-    // Check if username/password combination are listed in the user catalog
+    asm(
+        "mov ax, [ss:bp+4]\n"
+        "int 0xb8\n"
+        "mov cx, bx\n"
+        "mov bx, [ss:bp+6] ; reserved_memory pointer\n"
+        "mov [ss:bx + reserved_memory.segment], cx\n"
+        "mov [ss:bx + reserved_memory.offset], dx\n"
+        "mov [ss:bx + reserved_memory.size], ax\n"
+        );
 }
 
-string sha3_256(string data)
+void free(reserved_memory *allocated)
 {
-    return data;
+    asm(
+        "mov bx, [ss:bp+4]\n"
+        "mov ax, [ss:bx + reserved_memory.size]\n"
+        "mov dx, [ss:bx + reserved_memory.offset]\n"
+        "mov bx, [ss:bx + reserved_memory.segment]\n"
+        "int 0x9b\n"
+        );
 }
+//-------------------------------------------------------------------------------
+
+//-------------------------------------------------------------------------------
+#endif // __STDLIB_H_INCLUDED
 //-------------------------------------------------------------------------------

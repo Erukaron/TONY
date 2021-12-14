@@ -307,21 +307,21 @@ kernel_setup:
     jmp 0xffff:0 ; reset vector
 
     test_code:
-        push cs
-        pop ds
-        mov si, test_file
-        xchg bx, bx
-        int 0xc2
+        ;push cs
+        ;pop ds
+        ;mov si, test_file
+        ;xchg bx, bx
+        ;int 0xc2
 
-        xchg bx, bx
+        ;xchg bx, bx
 
         ; Edit.com wird überschrieben -> vbindiff orig und neu
         ; -> Check start cluster
 
-        mov dl, 15
-        int 0xc6
+        ;mov dl, 15
+        ;int 0xc6
 
-        xchg bx, bx
+        ;xchg bx, bx
 
         ret
 

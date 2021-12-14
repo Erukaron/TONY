@@ -129,7 +129,7 @@ mlt_start:
         ;       -> write bytes in hex form (prefix/suffix is ommited) directly and without space to S:O
         ;       -> To quit direct mode enter q
         ;   A -> Start assembler mode on address S:O
-        ;       -> Ti quit enter q
+        ;       -> To quit enter q
         ; B -> Bytes
 
         ; split segment and offset

@@ -1589,6 +1589,7 @@ fat_read_next_string:
 ;       0x00: no error
 ;       0x01: write error
 ;       0x02: file not found
+;       0x04: root directory error (on write)
 ;-------------------------------------------------------------------------------
 fat_write_next_byte:
     ; Writing process:
@@ -1634,7 +1635,7 @@ fat_write_next_byte:
     jnz .byte_to_data_puffer
 
     ; 2a)
-
+    ; ToDo: 
 
 
 
@@ -1673,6 +1674,9 @@ fat_write_next_byte:
         mov si, bx 
         call fat_search_file ; es:di: first byte of file entry in root dir
 
+        mov [cs:.root_dir_entry_segment], es
+        mov [cs:.root_dir_entry_offset], di
+
         cmp ax, -1
         jz .error_file_not_found
 
@@ -1704,18 +1708,74 @@ fat_write_next_byte:
     jc .error_write
 
     ; 6)
+    push es
+    push di
+        ; Search file entry in root directory by name
+        push word [cs:.root_dir_entry_segment]
+        pop es
+        mov di, [cs:.root_dir_entry_offset]
 
+        ; Increase size (FAT_RD_SIZE_OFFSET) of file by one byte
+        add word [es:di + FAT_RD_SIZE_OFFSET + 2], 1
+        cmp word [es:di + FAT_RD_SIZE_OFFSET + 2], 0
+        jnz .dir_no_inc_sector
+            ; Increase segment as well
+            mov ax, [es:di + FAT_RD_SIZE_OFFSET]
+            add ax, 1
+            mov [es:di + FAT_RD_SIZE_OFFSET], ax
+        .dir_no_inc_sector:
 
+        ; Write root directory to disk
+        push ax
+        push bx
+        push cx
+        push dx
+            ; Calculate size of root directory (cx)
+            xor cx, cx
+            xor dx, dx
+            mov ax, FAT_RD_ENTRY_LENGTH ; Every entry is 32 bytes long
+            mul word [cs:bpbRootEntries] ; Multiply by the number of root entries
+            div word [cs:bpbBytesPerSector] ; Get the size of the root directory in sectors
+            xchg ax, cx ; Store in cx
 
+            ; Calculate location of root directory (ax)
+            mov al, byte [cs:bpbNumberOfFATs]
+            mul word [cs:bpbSectorsPerFAT]
+            add ax, word [cs:bpbReservedSectors] ; Add bootsector and other reserved sectors
 
+            mov dl, [cs:fat_current_drive] ; drive
 
+            ; write buffer
+            push word ROOT_SEGMENT
+            pop es
+            mov bx, ROOT_OFFSET
+
+            call fat_write_device
+            jc .error_write_root_dir ; error on write
+        pop dx
+        pop cx
+        pop bx
+        pop ax
+    pop di
+    pop es
 
     ; 7)
+    push ax
+    push es
+        push bp
+        pop es
 
-
-
-
-
+        ; 7b)
+        inc word [es:bx + FAT_FILE_HANDLE_OFFSET_CURSOR + 2]
+        mov ax, [cs:bpbBytesPerSector]
+        cmp [es:bx + FAT_FILE_HANDLE_OFFSET_CURSOR + 2], ax
+        jb .cursor_ok
+            ; 7a)
+            mov word [es:bx + FAT_FILE_HANDLE_OFFSET_CURSOR + 2], 0
+            add word [es:bx + FAT_FILE_HANDLE_OFFSET_CURSOR], 1 ; Increase sector
+        .cursor_ok:
+    pop es
+    pop ax
 
     .done:
         mov dl, 0
@@ -1729,6 +1789,17 @@ fat_write_next_byte:
         or dl, 2
         jmp .return
 
+    .error_write_root_dir:
+        pop dx
+        pop cx
+        pop bx
+        pop ax
+        pop di
+        pop es
+
+        or dl, 4
+        jmp .return
+
     .return:
         call fat_disable_motor
 
@@ -1740,6 +1811,9 @@ fat_write_next_byte:
         xor dh, dh
 
         iret
+
+    .root_dir_entry_segment dw 0
+    .root_dir_entry_offset dw 0
 
     xchg bx, bx
     push cs

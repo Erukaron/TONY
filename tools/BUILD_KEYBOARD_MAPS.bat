@@ -17,13 +17,13 @@ if exist bin\ set removeBin=false
 if exist build\ set removeBuild=false
 
 echo Creating directories
-mkdir bin\KeyboardMaps
-mkdir build\KeyboardMaps
-echo.
+mkdir bin\KeyboardMaps >nul
+mkdir build\KeyboardMaps >nul
+::echo.
 
 echo Creating working copies
-copy src\KeyboardMaps\*.* build\KeyboardMaps\ /Y
-copy inc\*.* build\KeyboardMaps\ /Y
+copy src\KeyboardMaps\*.* build\KeyboardMaps\ /Y >nul
+copy inc\*.* build\KeyboardMaps\ /Y >nul
 
 :: Nasm needs to load the include files from the current directory, so switch to build dir
 cd build\KeyboardMaps
@@ -45,7 +45,7 @@ for %%f in (bin\KeyboardMaps\*.MAP) do (
 )
 echo.
 
-copy bin\KeyboardMaps\*.MAP files
+copy bin\KeyboardMaps\*.MAP files >nul
 echo.
 
 :: Wait a little bit, so that the delete does not fail
